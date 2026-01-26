@@ -1,0 +1,260 @@
+@import 'variable';
+@import 'mixin';
+
+// Import Google Font
+@import url('https://fonts.googleapis.com/css2?family=Urbanist:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+
+body {
+  font-family: $font-family-base;
+  background-color: $body-bg;
+  color: $body-color;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+// Neumorphic Utilities
+.neumorphic-panel {
+  background: $body-bg;
+  box-shadow: 9px 9px 16px rgb(163,177,198,0.6), -9px -9px 16px rgba(255,255,255, 0.5);
+  border-radius: $border-radius-16;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+
+.neumorphic-btn {
+  background: $body-bg;
+  box-shadow: 5px 5px 10px rgb(163,177,198,0.6), -5px -5px 10px rgba(255,255,255, 0.5);
+  border-radius: $border-radius-12;
+  border: none;
+  color: $secondary;
+  font-weight: $font-semibold;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 6px 6px 12px rgb(163,177,198,0.7), -6px -6px 12px rgba(255,255,255, 0.6);
+    color: $primary;
+  }
+
+  &:active, &.active {
+    transform: translateY(0);
+    box-shadow: inset 4px 4px 8px rgb(163,177,198,0.6), inset -4px -4px 8px rgba(255,255,255, 0.5);
+    color: $primary;
+  }
+  
+  &.primary {
+    color: $primary;
+  }
+  
+  &.danger {
+    color: $danger;
+  }
+}
+
+.neumorphic-input {
+  background: $body-bg;
+  box-shadow: inset 4px 4px 8px rgb(163,177,198,0.6), inset -4px -4px 8px rgba(255,255,255, 0.5);
+  border-radius: $border-radius-6;
+  border: none;
+  padding: 0.75rem;
+  width: 100%;
+  color: $secondary;
+  font-family: 'JetBrains Mono', monospace;
+  
+  &:focus {
+    outline: none;
+    box-shadow: inset 6px 6px 10px rgb(163,177,198,0.7), inset -6px -6px 10px rgba(255,255,255, 0.6);
+  }
+}
+
+// Layout
+.app-container {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+.canvas-area {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: $body-bg;
+  background-image: url('/images/hero-background.jpg');
+  background-size: cover;
+  background-position: center;
+  position: relative;
+  
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: radial-gradient($secondary-minor 1px, transparent 1px);
+    background-size: 20px 20px;
+    opacity: 0.3;
+    pointer-events: none;
+  }
+}
+
+.sidebar {
+  width: 350px;
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  border-left: 1px solid rgba(255, 255, 255, 0.5);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  overflow-y: auto;
+  z-index: 10;
+  box-shadow: -5px 0 15px rgba(0,0,0,0.05);
+}
+
+.toolbar {
+  position: absolute;
+  top: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 1rem;
+  padding: 0.75rem;
+  z-index: 20;
+}
+
+.stats-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85rem;
+  color: $secondary;
+  border-top: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+// Components
+.section-title {
+  font-size: 1.1rem;
+  font-weight: $font-bold;
+  color: $secondary;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  
+  &::before {
+    content: '';
+    display: block;
+    width: 4px;
+    height: 16px;
+    background: $primary;
+    border-radius: 2px;
+  }
+}
+
+.property-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+  
+  label {
+    font-size: 0.9rem;
+    color: $light-dark;
+  }
+  
+  input {
+    width: 100px;
+  }
+}
+
+.material-card {
+  @extend .neumorphic-btn;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 1rem;
+  width: 100%;
+  margin-bottom: 0.75rem;
+  position: relative;
+  overflow: hidden;
+  
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 40px;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    mask-image: linear-gradient(to left, black, transparent);
+    -webkit-mask-image: linear-gradient(to left, black, transparent);
+    opacity: 0.5;
+  }
+  
+  &.mat-Aluminum::after { background-image: url('/images/material-aluminum.jpg'); }
+  &.mat-Plastic::after { background-image: url('/images/material-plastic.jpg'); }
+  &.mat-Water::after { background-image: url('/images/material-water.jpg'); }
+  &.mat-Copper::after { background-image: url('/images/material-copper.jpg'); }
+  
+  .material-name {
+    font-weight: $font-bold;
+    color: $secondary;
+  }
+  
+  .material-props {
+    font-size: 0.8rem;
+    color: $gray;
+    margin-top: 0.25rem;
+  }
+}
+
+.color-scale {
+  width: 300px;
+  height: 20px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, blue, cyan, green, yellow, red);
+  position: relative;
+  margin-top: 0.5rem;
+  
+  &::before, &::after {
+    position: absolute;
+    top: 25px;
+    font-size: 0.8rem;
+    font-weight: bold;
+  }
+  
+  &::before {
+    content: '32°F';
+    left: 0;
+  }
+  
+  &::after {
+    content: '130°F';
+    right: 0;
+  }
+}

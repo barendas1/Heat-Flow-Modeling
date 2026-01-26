@@ -1,0 +1,130 @@
+/* =========== IMAGE PATH VARIABLE ============= */
+$assetPath: "assets/images";
+/* Usage of bacground image */
+//background: url(#{$assetPath}/background.jpg) repeat-x fixed 0 0;
+
+// Color system
+$white: #ffffff;
+$black: #000000;
+$primary: #f8a24b;
+$secondary: #3f4492;
+$secondary-minor: #86A1D0;
+$secondary-minor-hover: #6b88ba;
+$light-secondary: #6569A8;
+$success: #56c07b;
+$success2: #6fc98f;
+$info: #65afff;
+$blue: #0062F0;
+$warning: #fd7e14;
+$danger: #dc3545;
+$light: #E3E3E3;
+$dark: #151515;
+$gray: #9999A8;
+$border-color: #D8D8D8;
+$border-table: #D8DCE0 ;
+$read-only: #9999A8;
+$light-gray: #F2F2F2;
+$light-dark: #656565;
+$light-gray2: #EFF1F2;
+$light-gray3: #dee2e6;
+$light-navi: #F4F7FA;
+$secondary2: #ededf8;
+$secondary-light: #fef3e7;
+$light-blue: #B8D0E3;
+$table-header: #656565;
+$table-header-text: white;
+$table-footer-alt: #ededf7;
+$table-footer: linear-gradient(90deg, $table-footer-alt 0%, rgb(240, 244, 255) 100%);
+$light-blue: #ecf1f7;
+$green: #198754;
+$green-2: #EFF4F8;
+$brown: #B76B00;
+$orange: #D17B02;
+$purple: #DEDEED;
+$light-purple: #F0F0FA;
+$sub-bg-blue: #F0F7FE;
+$sub-bg-grey: #EAEAEA;
+$sub-bg-orange: #FAEFE1;
+$sub-bg-blue2: #E8E8F4;
+$sub-bg-light-secondary: #E8E8F4;
+$sub-bg-brown: #EBDCC7;
+$table-color: #6E7882;
+// Body
+// Settings for the `<body>` element.
+$body-bg: #F5F8FB;
+$body-color: $black;
+
+// Links
+// Style anchor elements.
+$link-color: $primary;
+$link-decoration: none;
+$link-hover-color: darken($primary, 50%);
+$link-hover-decoration: underline;
+
+// Font
+$font-family-base: 'Urbanist', sans-serif;
+$font-size-base: 1rem; // Assumes the browser default, typically `16px`
+$font-custom: 16;
+$font-size-sm: $font-size-base * .875; //14px
+$font-lighter: lighter;
+$font-light: 300;
+$font-regular: 400;
+$font-medium: 500;
+$font-semibold: 600;
+$font-bold: 700;
+$line-height-base: 1.25;
+
+// Style p element.
+$paragraph-margin-bottom: 1rem;
+
+// Media BreakPoint
+$breakpoint-xxxxl: 1800px;
+$breakpoint-xxxl: 1600px;
+$breakpoint-xxl: 1440px;
+$breakpoint-xl: 1200px;
+$breakpoint-lg: 992px;
+$breakpoint-md: 768px;
+$breakpoint-md-include: 769px;
+$breakpoint-sm: 576px;
+$breakpoint-xs: 414px;
+
+$breakpoint-hoz-xxl: 900px;
+$breakpoint-hoz-xs: 350px;
+
+$border-radius: 0.25rem; // 4px
+$border-radius-6: 0.375rem; // 6px
+$border-radius-12: 0.75rem; // 12px
+$border-radius-16: 1rem; // 16px
+$border-radius-24: 1.5rem; // 24px
+$border-radius-32: 2rem; // 32px
+$rounded-pill: 100%;
+
+$box-shadow: 0 8px 16px rgba($black, 0.09);
+$box-shadow-0: none;
+
+$transition-base: all .2s ease-in-out;
+$transition-fade: opacity .15s linear;
+$transition-collapse: height .35s ease;
+
+//Gradiant Style
+$fallback: $primary;
+$from: $primary;
+$to: darken($primary,10);
+$direction: 225deg;
+
+$gradiant-primary-color: linear-gradient(90deg, rgba($primary,0.30) 0%, rgba($white,0.30) 100%);
+$gradiant-secondary-color: linear-gradient(90deg, rgba($secondary,0.30) 0%, rgba($white,0.30) 100%);
+$gradiant-sidebar-color: linear-gradient(270deg, rgba($secondary,0.03) 0%, rgba($primary,0.25) 100%);
+
+// Spacing
+// Control the default styling of most Bootstrap elements by modifying these
+// variables. Mostly focused on spacing.
+// You can add more entries to the $spacers map, should you need more variation.
+$spacer: 1rem;
+$spacers: ();
+$spacers: map-merge( ( 0: 0, 1: ($spacer * .25), 2: ($spacer * .5), 3: $spacer, 4: ($spacer * 1.5), 5: ($spacer * 3), ), $spacers );
+
+$sidebar-width: 250px;
+$grid-breakpoints: ( xs: 0, sm: 576px, md: 768px, lg: 992px, xl: 1200px, xxl: 1440px, xxxl:1600px, xxxxl:1800px );
+
+$sidebar-collapsed-width: 68px;

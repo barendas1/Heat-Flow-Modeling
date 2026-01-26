@@ -1,0 +1,109 @@
+// MEDIA BREAKPOINTS
+@mixin media($breakpoint, $point) {
+    @if $breakpoint==down {
+        @media (max-width: $point - .1) {
+            @content;
+        }
+    }
+    @else if $breakpoint==up {
+        @media (min-width: $point) {
+            @content;
+        }
+    }
+}
+
+@mixin media-height($breakpoint, $point) {
+    @if $breakpoint==down {
+        @media (max-height: $point - .1) {
+            @content;
+        }
+    }
+    @else if $breakpoint==up {
+        @media (min-height: $point) {
+            @content;
+        }
+    }
+}
+
+// CALC FUNCTION RULE
+@mixin calc($property, $expression) {
+    #{$property}: calc(#{$expression});
+}
+
+// PREFIX RULE
+@mixin css3-prefix($prop, $value) {
+    -webkit-#{$prop}: #{$value};
+    -moz-#{$prop}: #{$value};
+    -ms-#{$prop}: #{$value};
+    -o-#{$prop}: #{$value};
+    #{$prop}: #{$value};
+}
+
+// POSITION
+@mixin position($position, $top: null, $right: null, $bottom: null, $left: null) {
+    position: $position;
+    top: $top;
+    right: $right;
+    bottom: $bottom;
+    left: $left;
+}
+
+// TEXT ELLIPSIS
+@mixin text-ellipsis {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+// BORDER RADIUS
+@mixin border-radius($border-radius) {
+    border-radius: $border-radius;
+    -webkit-border-radius: $border-radius;
+    -moz-border-radius: $border-radius;
+}
+
+@mixin Transition($transition) {
+    -webkit-transition: $transition;
+    -moz-transition: $transition;
+    -ms-transition: $transition;
+    -o-transition: $transition;
+    transition: $transition;
+}
+
+// Button sizes
+@mixin button-size($btn-padding-y, $btn-padding-x, $font-size-base, $line-height-base, $box-shadow) {
+    padding: $btn-padding-y $btn-padding-x;
+    font-size: $font-size-base;
+    line-height: $line-height-base;
+    box-shadow: $box-shadow;
+}
+
+// PLACEHOLDER RULE
+@mixin placeholder {
+    &::-webkit-input-placeholder {
+        @content
+    }
+
+    &:-moz-placeholder {
+        @content
+    }
+
+    &::-moz-placeholder {
+        @content
+    }
+
+    &:-ms-input-placeholder {
+        @content
+    }
+}
+
+// Gradients
+@mixin x-linear-gradient($direction, $fallback, $from, $to) {
+    $directions: helper-gradient-angle($direction);
+    // Provide a fallback-color
+    background-color: $fallback;
+    // Cross-browser linear-gradients
+    background-image: -webkit-gradient(linear, $directions, from($from), to($to)); // Android 2.1-3.0
+    background-image: -webkit-linear-gradient($directions, $from, $to);
+    background-image: linear-gradient($direction, $from, $to);
+}
