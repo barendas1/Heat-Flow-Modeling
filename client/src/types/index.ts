@@ -38,6 +38,7 @@ export interface Sample {
   
   // Peltier Mode
   target_temperature?: number; // If set, this sample acts as a thermostat
+  peltier_active?: boolean; // Is Peltier mode enabled?
   power_consumption?: number; // Watts required to maintain target temp
 }
 

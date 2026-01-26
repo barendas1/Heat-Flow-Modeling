@@ -43,15 +43,29 @@ export const Canvas: React.FC<CanvasProps> = ({
     };
   };
 
-  // Temperature Color Map (Blue -> Green -> Red)
-  const getTempColor = (tempF: number) => {
-    const min = 70; // Ambient
-    const max = 120; // Hot sample
-    const t = Math.max(0, Math.min(1, (tempF - min) / (max - min)));
-    const r = Math.round(255 * t);
-    const b = Math.round(255 * (1 - t));
-    const g = Math.round(100 * (1 - Math.abs(t - 0.5) * 2));
-    return `rgb(${r}, ${g}, ${b})`;
+  // Turbo Colormap (Google AI) - smoother and more perceptually uniform than Jet/Rainbow
+  const getTurboColor = (t: number) => {
+    // kRed, kGreen, kBlue coefficients for Turbo colormap approximation
+    const kRedVec4 = [0.13572138, 4.61539260, -42.66032258, 132.13108234, -152.94239396, 59.28637943];
+    const kGreenVec4 = [0.09140261, 2.19418839, 4.84296658, -14.18503333, 4.27729857, 2.82956604];
+    const kBlueVec4 = [0.10667330, 12.64194608, -60.58204836, 110.36276771, -89.90310912, 27.34824973];
+
+    const x = Math.max(0, Math.min(1, t));
+    
+    const v4 = [1, x, x * x, x * x * x, x * x * x * x, x * x * x * x * x];
+    
+    let r = 0, g = 0, b = 0;
+    for (let i = 0; i < 6; i++) {
+      r += v4[i] * kRedVec4[i];
+      g += v4[i] * kGreenVec4[i];
+      b += v4[i] * kBlueVec4[i];
+    }
+
+    return {
+      r: Math.floor(Math.max(0, Math.min(1, r)) * 255),
+      g: Math.floor(Math.max(0, Math.min(1, g)) * 255),
+      b: Math.floor(Math.max(0, Math.min(1, b)) * 255)
+    };
   };
 
   useEffect(() => {
@@ -67,34 +81,77 @@ export const Canvas: React.FC<CanvasProps> = ({
 
     // 1. Draw Heatmap Grid (if available)
     if (showHeatmap && gridData) {
-      const cellWidth = canvas.width / gridData[0].length;
-      const cellHeight = canvas.height / gridData.length;
+      const width = canvas.width;
+      const height = canvas.height;
+      const imageData = ctx.createImageData(width, height);
+      const data = imageData.data;
       
-      for (let y = 0; y < gridData.length; y++) {
-        for (let x = 0; x < gridData[y].length; x++) {
-          const temp = gridData[y][x];
-          if (temp > container.ambient_temperature + 0.5) { // Only draw if warmer than ambient
-            ctx.fillStyle = getTempColor(temp);
-            ctx.fillRect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
-          }
+      // Find min/max for normalization (optional, but good for contrast)
+      // For now, we stick to fixed range 70-120F for consistency
+      const minTemp = 70;
+      const maxTemp = 120;
+
+      // The gridData might be smaller than canvas, we need to scale it up
+      // Or if gridData is 1:1 with canvas pixels (which it should be for high fidelity)
+      // Assuming gridData matches canvas dimensions for now, or we interpolate
+      
+      // If gridData is lower res, we need to scale. 
+      // Let's assume gridData is the simulation grid.
+      const gridH = gridData.length;
+      const gridW = gridData[0].length;
+      
+      // Simple nearest neighbor upscaling for now if dimensions mismatch, 
+      // but ideally physics engine runs at canvas res or we use bilinear interpolation here.
+      // For performance, we'll just iterate pixels and map to grid.
+      
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          // Map pixel (x,y) to grid coordinates
+          const gx = Math.floor((x / width) * gridW);
+          const gy = Math.floor((y / height) * gridH);
           
-          // Isotherm Lines (Contours every 5 degrees)
-          if (x > 0 && y > 0) {
-             const prevTemp = gridData[y][x-1];
-             const topTemp = gridData[y-1][x];
-             
-             // Check horizontal crossing
-             for (let t = 80; t <= 120; t += 5) {
-               if ((temp >= t && prevTemp < t) || (temp < t && prevTemp >= t)) {
-                 ctx.fillStyle = 'rgba(255,255,255,0.3)';
-                 ctx.fillRect(x * cellWidth, y * cellHeight, 2, cellHeight);
-               }
-               if ((temp >= t && topTemp < t) || (temp < t && topTemp >= t)) {
-                 ctx.fillStyle = 'rgba(255,255,255,0.3)';
-                 ctx.fillRect(x * cellWidth, y * cellHeight, cellWidth, 2);
-               }
+          const temp = gridData[gy][gx];
+          
+          // Skip drawing if temp is ambient (optimization + visual clarity)
+          // But for full fluid sim, we might want to draw everything.
+          // Let's draw everything to show the "medium" clearly.
+          
+          const t = Math.max(0, Math.min(1, (temp - minTemp) / (maxTemp - minTemp)));
+          const color = getTurboColor(t);
+          
+          const index = (y * width + x) * 4;
+          data[index] = color.r;
+          data[index + 1] = color.g;
+          data[index + 2] = color.b;
+          data[index + 3] = 255; // Full opacity
+        }
+      }
+      
+      ctx.putImageData(imageData, 0, 0);
+
+      // Draw Isotherm Lines (Contours every 5 degrees)
+      // We do this after putImageData so lines are on top
+      ctx.lineWidth = 1;
+      const cellW = width / gridW;
+      const cellH = height / gridH;
+      
+      for (let y = 1; y < gridH; y++) {
+        for (let x = 1; x < gridW; x++) {
+           const temp = gridData[y][x];
+           const prevTemp = gridData[y][x-1];
+           const topTemp = gridData[y-1][x];
+           
+           // Check horizontal crossing
+           for (let t = 80; t <= 120; t += 5) {
+             if ((temp >= t && prevTemp < t) || (temp < t && prevTemp >= t)) {
+               ctx.fillStyle = 'rgba(255,255,255,0.4)';
+               ctx.fillRect(x * cellW, y * cellH, 2, cellH);
              }
-          }
+             if ((temp >= t && topTemp < t) || (temp < t && topTemp >= t)) {
+               ctx.fillStyle = 'rgba(255,255,255,0.4)';
+               ctx.fillRect(x * cellW, y * cellH, cellW, 2);
+             }
+           }
         }
       }
     }
