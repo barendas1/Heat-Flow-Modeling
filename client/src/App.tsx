@@ -5,7 +5,7 @@ import { PhysicsEngine } from './engine/PhysicsEngine';
 import { MaterialLibrary } from './engine/MaterialLibrary';
 import './styles/main.scss';
 
-// Icons (using simple SVG for now to avoid dependencies)
+// Icons1 (using simple SVG for now to avoid dependencies)
 const Icons = {
   Play: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>,
   Pause: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>,
