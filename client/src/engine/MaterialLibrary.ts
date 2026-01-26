@@ -5,26 +5,34 @@ export class MaterialLibrary {
     return {
       'Aluminum': {
         name: 'Aluminum',
-        thermal_conductivity: 205,
+        thermal_conductivity: 205, // W/(m·K) - Highly conductive
         specific_heat: 900,
         density: 2700,
-        emissivity: 0.9,
+        emissivity: 0.05, // Polished aluminum has low emissivity
         thickness: 0.002
       },
-      'Plastic': {
-        name: 'Plastic',
-        thermal_conductivity: 0.2,
-        specific_heat: 1250,
-        density: 950,
-        emissivity: 0.95,
+      'Plastic (PVC)': {
+        name: 'Plastic (PVC)',
+        thermal_conductivity: 0.19, // Insulator
+        specific_heat: 1000,
+        density: 1400,
+        emissivity: 0.92,
         thickness: 0.001
       },
       'Water': {
         name: 'Water',
         thermal_conductivity: 0.6,
-        specific_heat: 4186,
+        specific_heat: 4186, // High heat capacity
         density: 1000,
         emissivity: 0.96,
+        thickness: 0.01
+      },
+      'Phenolic Foam': {
+        name: 'Phenolic Foam',
+        thermal_conductivity: 0.03, // Excellent insulator
+        specific_heat: 1400,
+        density: 50, // Very light
+        emissivity: 0.9,
         thickness: 0.01
       },
       'Air': {
@@ -50,14 +58,6 @@ export class MaterialLibrary {
         density: 8960,
         emissivity: 0.85,
         thickness: 0.002
-      },
-      'Glass': {
-        name: 'Glass',
-        thermal_conductivity: 1.0,
-        specific_heat: 840,
-        density: 2500,
-        emissivity: 0.92,
-        thickness: 0.003
       }
     };
   }

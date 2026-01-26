@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Canvas } from './components/Canvas';
 import { Container, Sample, ToolType, Material } from './types';
-import { PhysicsEngine } from './engine/PhysicsEngine';
+import { GridPhysicsEngine } from './engine/PhysicsEngine';
 import { MaterialLibrary } from './engine/MaterialLibrary';
+import { InterferenceAnalyzer } from './engine/InterferenceAnalyzer';
+import { TemperatureGraph } from './components/TemperatureGraph';
 import './styles/main.scss';
 
-// Icons1 (using simple SVG for now to avoid dependencies)
+// Icons (using simple SVG for now to avoid dependencies)
 const Icons = {
   Play: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>,
   Pause: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>,
@@ -16,7 +18,14 @@ const Icons = {
 
 const App: React.FC = () => {
   // State
-  const [container, setContainer] = useState<Container | null>(null);
+  const [container, setContainer] = useState<Container>({
+    shape: 'circle',
+    width: 600,
+    height: 400,
+    fill_material: MaterialLibrary.getMaterials()['Phenolic Foam'],
+    wall_material: MaterialLibrary.getMaterials()['Plastic (PVC)'],
+    ambient_temperature: 70
+  });
   const [samples, setSamples] = useState<Sample[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tool, setTool] = useState<ToolType>('select');
@@ -24,14 +33,37 @@ const App: React.FC = () => {
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [showHeatRings, setShowHeatRings] = useState(true);
   
-  const physicsRef = useRef(new PhysicsEngine());
+  const physicsRef = useRef(new GridPhysicsEngine());
+  const [gridData, setGridData] = useState<number[][] | null>(null);
+  const [graphData, setGraphData] = useState<any[]>([]);
   const animationRef = useRef<number | undefined>(undefined);
+  const timeRef = useRef(0);
+
+  // Initialize Grid on Start
+  useEffect(() => {
+    physicsRef.current.initialize(container, samples, window.innerWidth - 350, window.innerHeight);
+  }, [container, samples.length]); // Re-init on structural changes
 
   // Simulation Loop
   useEffect(() => {
     if (isRunning) {
       const loop = () => {
-        setSamples(prevSamples => physicsRef.current.calculateStep(container, prevSamples));
+        const result = physicsRef.current.step();
+        setGridData(result.grid);
+        
+        // Update Graph Data every 10 frames (approx 0.5s)
+        timeRef.current += 0.05;
+        if (Math.round(timeRef.current * 100) % 50 === 0) {
+          const point: any = { time: Math.round(timeRef.current) };
+          // Calculate average temp for each sample from grid (simplified)
+          // In a real app, we'd do this in the engine
+          samples.forEach(s => {
+             // Just using current temp state for now, ideally fetch from engine
+             point[s.name] = s.temperature; 
+          });
+          setGraphData(prev => [...prev.slice(-50), point]); // Keep last 50 points
+        }
+        
         animationRef.current = requestAnimationFrame(loop);
       };
       animationRef.current = requestAnimationFrame(loop);
@@ -44,7 +76,7 @@ const App: React.FC = () => {
   }, [isRunning, container]);
 
   // Handlers
-  const handleAddSample = (x: number, y: number) => {
+const handleAddSample = (x: number, y: number) => {
     const materials = MaterialLibrary.getMaterials();
     const newSample: Sample = {
       id: Math.random().toString(36).substr(2, 9),
@@ -52,7 +84,7 @@ const App: React.FC = () => {
       radius: 30,
       name: `Sample ${samples.length + 1}`,
       outer_material: materials['Aluminum'],
-      middle_material: materials['Plastic'],
+      middle_material: materials['Plastic (PVC)'],
       core_material: materials['Water'],
       outer_radius_fraction: 1.0,
       middle_radius_fraction: 0.8,
@@ -62,6 +94,8 @@ const App: React.FC = () => {
     };
     setSamples([...samples, newSample]);
     setTool('select');
+    // Re-init grid when geometry changes
+    physicsRef.current.initialize(container, [...samples, newSample], window.innerWidth - 350, window.innerHeight);
   };
 
   const handleSave = () => {
@@ -105,11 +139,11 @@ const App: React.FC = () => {
             Select
           </button>
           <button 
-            className={`neumorphic-btn ${tool === 'draw_container' ? 'active' : ''}`}
-            onClick={() => setTool('draw_container')}
-            title="Draw Container"
+            className={`neumorphic-btn ${tool === 'ruler' ? 'active' : ''}`}
+            onClick={() => setTool('ruler')}
+            title="Measure Distances"
           >
-            Draw Container
+            Ruler
           </button>
           <button 
             className={`neumorphic-btn ${tool === 'add_sample' ? 'active' : ''}`}
@@ -117,6 +151,28 @@ const App: React.FC = () => {
             title="Add Sample"
           >
             <Icons.Add /> Sample
+          </button>
+          <button 
+            className="neumorphic-btn"
+            onClick={() => {
+               // Auto-Arrange Logic: Hexagonal Packing
+               const cx = window.innerWidth / 2 - 175; // Adjust for sidebar
+               const cy = window.innerHeight / 2;
+               const r = 60; // Spacing
+               const newSamples = samples.map((s, i) => {
+                 const angle = (i / samples.length) * Math.PI * 2;
+                 return {
+                   ...s,
+                   x: cx + Math.cos(angle) * r,
+                   y: cy + Math.sin(angle) * r
+                 };
+               });
+               setSamples(newSamples);
+               physicsRef.current.initialize(container, newSamples, window.innerWidth - 350, window.innerHeight);
+            }}
+            title="Auto-Arrange Samples"
+          >
+            Auto-Layout
           </button>
           <div style={{ width: 1, background: '#ccc', margin: '0 10px' }} />
           <button 
@@ -143,7 +199,8 @@ const App: React.FC = () => {
           tool={tool}
           selectedId={selectedId}
           showHeatmap={showHeatmap}
-          showHeatRings={showHeatRings}
+          showDimensions={tool === 'ruler'}
+          gridData={gridData}
           onContainerUpdate={setContainer}
           onSampleUpdate={(updated) => setSamples(samples.map(s => s.id === updated.id ? updated : s))}
           onSelect={setSelectedId}
@@ -180,33 +237,82 @@ const App: React.FC = () => {
           <div className="property-group">
             <h3 className="section-title">Properties</h3>
             
-            {selectedId !== 'container' && (
-              <div className="form-row">
-                <label>Name</label>
-                <input 
-                  className="neumorphic-input"
-                  value={(selectedObject as Sample).name} 
-                  onChange={e => setSamples(samples.map(s => s.id === selectedId ? { ...s, name: e.target.value } : s))}
-                />
-              </div>
+            {selectedId === 'container' ? (
+              <>
+                <div className="form-row">
+                  <label>Shape</label>
+                  <select 
+                    className="neumorphic-input"
+                    value={container.shape}
+                    onChange={e => setContainer({ ...container, shape: e.target.value as any })}
+                  >
+                    <option value="circle">Circular Drum</option>
+                    <option value="rectangle">Rectangular Box</option>
+                  </select>
+                </div>
+                <div className="form-row">
+                  <label>Size (px)</label>
+                  <input 
+                    className="neumorphic-input"
+                    type="number"
+                    value={container.width}
+                    onChange={e => setContainer({ ...container, width: parseFloat(e.target.value), height: container.shape === 'circle' ? parseFloat(e.target.value) : container.height })}
+                  />
+                </div>
+                <div className="form-row">
+                  <label>Fill Material</label>
+                  <select 
+                    className="neumorphic-input"
+                    value={container.fill_material.name}
+                    onChange={e => setContainer({ ...container, fill_material: MaterialLibrary.getMaterials()[e.target.value] })}
+                  >
+                    {Object.keys(MaterialLibrary.getMaterials()).map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-row">
+                  <label>Ambient Temp (°F)</label>
+                  <input 
+                    className="neumorphic-input"
+                    type="number"
+                    value={container.ambient_temperature}
+                    onChange={e => setContainer({ ...container, ambient_temperature: parseFloat(e.target.value) })}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="form-row">
+                  <label>Name</label>
+                  <input 
+                    className="neumorphic-input"
+                    value={(selectedObject as Sample).name} 
+                    onChange={e => setSamples(samples.map(s => s.id === selectedId ? { ...s, name: e.target.value } : s))}
+                  />
+                </div>
+                <div className="form-row">
+                  <label>Start Temp (°F)</label>
+                  <input 
+                    className="neumorphic-input"
+                    type="number"
+                    value={(selectedObject as Sample).initial_temperature}
+                    onChange={e => setSamples(samples.map(s => s.id === selectedId ? { ...s, initial_temperature: parseFloat(e.target.value), temperature: parseFloat(e.target.value) } : s))}
+                  />
+                </div>
+                <div className="form-row">
+                  <label>Peltier Mode</label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.8rem' }}>
+                    <input 
+                      type="checkbox"
+                      checked={!!(selectedObject as Sample).target_temperature}
+                      onChange={e => setSamples(samples.map(s => s.id === selectedId ? { ...s, target_temperature: e.target.checked ? (selectedObject as Sample).initial_temperature : undefined } : s))}
+                    />
+                    Maintain Temp
+                  </label>
+                </div>
+              </>
             )}
-
-            <div className="form-row">
-              <label>Temperature (°F)</label>
-              <input 
-                className="neumorphic-input"
-                type="number"
-                value={Math.round((selectedObject as any).temperature || (selectedObject as any).ambient_temperature)}
-                onChange={e => {
-                  const val = parseFloat(e.target.value);
-                  if (selectedId === 'container') {
-                    setContainer({ ...container!, ambient_temperature: val });
-                  } else {
-                    setSamples(samples.map(s => s.id === selectedId ? { ...s, temperature: val, initial_temperature: val } : s));
-                  }
-                }}
-              />
-            </div>
 
             {selectedId !== 'container' && (
               <>
@@ -249,6 +355,30 @@ const App: React.FC = () => {
             </p>
           </div>
         )}
+
+        <div className="property-group">
+          <h3 className="section-title">Interference Analysis</h3>
+          <div style={{ fontSize: '0.8rem', color: '#666', background: '#f5f5f5', padding: '0.5rem', borderRadius: '4px' }}>
+            {InterferenceAnalyzer.getInterferenceReport(samples, container).map((line, i) => (
+              <div key={i} style={{ marginBottom: '4px' }}>{line}</div>
+            ))}
+          </div>
+        </div>
+
+        <div className="property-group">
+          <h3 className="section-title">Data & Analysis</h3>
+          <button className="neumorphic-btn" onClick={() => {
+             const csv = InterferenceAnalyzer.getInterferenceReport(samples, container).join('\n');
+             const blob = new Blob([csv], { type: 'text/csv' });
+             const url = URL.createObjectURL(blob);
+             const a = document.createElement('a');
+             a.href = url;
+             a.download = 'interference_report.csv';
+             a.click();
+          }}>Export Report (CSV)</button>
+          
+          <TemperatureGraph data={graphData} />
+        </div>
 
         <div className="property-group" style={{ marginTop: 'auto' }}>
           <h3 className="section-title">Legend</h3>

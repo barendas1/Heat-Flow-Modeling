@@ -1,116 +1,169 @@
-import { Container, Sample } from '../types';
+import { Container, Sample, Material } from '../types';
+import { MaterialLibrary } from './MaterialLibrary';
 
-export class PhysicsEngine {
-  private dt: number = 0.1; // Time step in seconds
-  private pixelToMeter: number = 0.001; // 1 pixel = 1mm
+// Constants
+const PIXEL_SIZE_MM = 2; // 1 pixel = 2mm (Balance between accuracy and performance)
+const PIXEL_AREA = (PIXEL_SIZE_MM / 1000) ** 2; // m²
+const TIME_STEP = 0.05; // Seconds
+
+interface GridCell {
+  temp: number; // Celsius
+  nextTemp: number; // Celsius
+  material: Material;
+  isBoundary: boolean; // Is this a fixed boundary condition?
+}
+
+export class GridPhysicsEngine {
+  private grid: GridCell[][] = [];
+  private width: number = 0;
+  private height: number = 0;
+  private time: number = 0;
 
   constructor() {}
 
-  fahrenheitToCelsius(f: number): number {
-    return (f - 32) * 5 / 9;
-  }
+  // Convert F to C
+  f2c(f: number): number { return (f - 32) * 5 / 9; }
+  // Convert C to F
+  c2f(c: number): number { return c * 9 / 5 + 32; }
 
-  celsiusToFahrenheit(c: number): number {
-    return c * 9 / 5 + 32;
-  }
+  // Initialize the grid based on container and samples
+  initialize(container: Container, samples: Sample[], canvasWidth: number, canvasHeight: number) {
+    this.width = Math.ceil(canvasWidth / 2); // Downsample for performance (2x2 pixels = 1 grid cell)
+    this.height = Math.ceil(canvasHeight / 2);
+    this.grid = [];
+    this.time = 0;
 
-  getEffectiveProperties(sample: Sample) {
-    const rOuter = sample.radius * sample.outer_radius_fraction;
-    const rMiddle = sample.radius * sample.middle_radius_fraction;
-    const rCore = sample.radius * sample.core_radius_fraction;
+    const ambientC = this.f2c(container.ambient_temperature);
 
-    // Area-weighted average for composite cylinder
-    const totalArea = Math.PI * Math.pow(rOuter, 2);
-    const coreArea = Math.PI * Math.pow(rCore, 2);
-    const middleArea = Math.PI * Math.pow(rMiddle, 2) - coreArea;
-    const outerArea = totalArea - Math.PI * Math.pow(rMiddle, 2);
+    for (let y = 0; y < this.height; y++) {
+      const row: GridCell[] = [];
+      for (let x = 0; x < this.width; x++) {
+        // Map grid coordinates back to world coordinates (pixels)
+        const worldX = x * 2;
+        const worldY = y * 2;
 
-    // Weighted thermal conductivity
-    const kEff = (
-      sample.core_material.thermal_conductivity * coreArea +
-      sample.middle_material.thermal_conductivity * middleArea +
-      sample.outer_material.thermal_conductivity * outerArea
-    ) / totalArea;
+        // Determine material at this point
+        let material = container.fill_material;
+        let temp = ambientC;
+        let isBoundary = false;
 
-    // Weighted specific heat
-    const cEff = (
-      sample.core_material.specific_heat * coreArea +
-      sample.middle_material.specific_heat * middleArea +
-      sample.outer_material.specific_heat * outerArea
-    ) / totalArea;
+        // Check if inside container
+        let insideContainer = false;
+        const cx = canvasWidth / 2;
+        const cy = canvasHeight / 2;
 
-    // Weighted density
-    const rhoEff = (
-      sample.core_material.density * coreArea +
-      sample.middle_material.density * middleArea +
-      sample.outer_material.density * outerArea
-    ) / totalArea;
+        if (container.shape === 'circle') {
+          const r = container.width / 2;
+          const dist = Math.sqrt((worldX - cx) ** 2 + (worldY - cy) ** 2);
+          if (dist <= r) insideContainer = true;
+        } else {
+          const w = container.width;
+          const h = container.height;
+          if (worldX >= cx - w/2 && worldX <= cx + w/2 && 
+              worldY >= cy - h/2 && worldY <= cy + h/2) {
+            insideContainer = true;
+          }
+        }
 
-    return { kEff, cEff, rhoEff, totalArea };
-  }
+        if (!insideContainer) {
+          // Outside container = Ambient Air
+          material = MaterialLibrary.getMaterials()['Air'];
+          isBoundary = true; // Fixed ambient temp
+        } else {
+          // Check if inside any sample
+          for (const sample of samples) {
+            const dx = worldX - sample.x;
+            const dy = worldY - sample.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
 
-  calculateStep(container: Container | null, samples: Sample[]): Sample[] {
-    if (!container || samples.length === 0) return samples;
+            if (dist <= sample.radius) {
+              // Determine layer
+              if (dist <= sample.radius * sample.core_radius_fraction) {
+                material = sample.core_material;
+                temp = this.f2c(sample.initial_temperature);
+              } else if (dist <= sample.radius * sample.middle_radius_fraction) {
+                material = sample.middle_material;
+                temp = this.f2c(sample.initial_temperature); // Simplified: whole sample starts at init temp
+              } else {
+                material = sample.outer_material;
+                temp = this.f2c(sample.initial_temperature);
+              }
+              break;
+            }
+          }
+        }
 
-    const nextSamples = samples.map(s => ({ ...s }));
-    const ambientTempC = this.fahrenheitToCelsius(container.ambient_temperature);
-
-    // Calculate heat transfer for each sample
-    for (let i = 0; i < samples.length; i++) {
-      const sample = samples[i];
-      const currentTempC = this.fahrenheitToCelsius(sample.temperature);
-      let heatFlux = 0.0;
-
-      const { kEff, cEff, rhoEff, totalArea } = this.getEffectiveProperties(sample);
-      
-      // 1. Heat transfer to other samples (Conduction approximation)
-      for (let j = 0; j < samples.length; j++) {
-        if (i === j) continue;
-        
-        const other = samples[j];
-        const dx = other.x - sample.x;
-        const dy = other.y - sample.y;
-        const distance = Math.sqrt(dx * dx + dy * dy) * this.pixelToMeter;
-        
-        // Skip if too far (interaction range is sum of diameters)
-        if (distance > (sample.radius + other.radius) * 2 * this.pixelToMeter) continue;
-        
-        const otherTempC = this.fahrenheitToCelsius(other.temperature);
-        
-        // Simplified conduction: Q = k * A * dT / dx
-        // We approximate contact area based on proximity
-        const contactFactor = Math.max(0, 1 - distance / ((sample.radius + other.radius) * 2 * this.pixelToMeter));
-        const area = (sample.radius * this.pixelToMeter) * (sample.outer_material.thickness); // Cross-sectional area approximation
-        
-        const conduction = kEff * area * (otherTempC - currentTempC) / Math.max(distance, 0.001) * contactFactor;
-        heatFlux += conduction;
+        row.push({
+          temp,
+          nextTemp: temp,
+          material,
+          isBoundary
+        });
       }
+      this.grid.push(row);
+    }
+  }
 
-      // 2. Convection to ambient (from top/bottom surfaces)
-      // Q = h * A * (T_inf - T)
-      const h = 10; // Convection coefficient W/(m²·K)
-      const surfaceArea = 2 * (Math.PI * Math.pow(sample.radius * this.pixelToMeter, 2)); // Top and bottom
-      const convection = h * surfaceArea * (ambientTempC - currentTempC);
-      heatFlux += convection;
+  // Perform one simulation step (Finite Difference Method)
+  step(): { grid: number[][], samples: Sample[] } {
+    this.time += TIME_STEP;
+    const dx = PIXEL_SIZE_MM / 1000; // meters
+    const dx2 = dx * dx;
 
-      // 3. Conduction to container floor (if inside)
-      // Assuming container floor is at ambient temp for simplicity in this 2D model
-      // Q = k * A * dT / dx
-      const floorConduction = kEff * surfaceArea * (ambientTempC - currentTempC) / 0.01; // 1cm gap
-      heatFlux += floorConduction * 0.1; // Reduced factor
+    // Update Grid Temperatures
+    for (let y = 1; y < this.height - 1; y++) {
+      for (let x = 1; x < this.width - 1; x++) {
+        const cell = this.grid[y][x];
+        if (cell.isBoundary) continue;
 
-      // Update temperature
-      // dT/dt = Q / (m * c)
-      // m = rho * V = rho * Area * thickness
-      const volume = totalArea * this.pixelToMeter * this.pixelToMeter * sample.outer_material.thickness;
-      const mass = rhoEff * volume;
-      
-      const dT = (heatFlux / (mass * cEff)) * this.dt;
-      
-      nextSamples[i].temperature = this.celsiusToFahrenheit(currentTempC + dT);
-      nextSamples[i].heat_loss_rate = heatFlux;
+        const top = this.grid[y-1][x];
+        const bottom = this.grid[y+1][x];
+        const left = this.grid[y][x-1];
+        const right = this.grid[y][x+1];
+
+        // 2D Heat Equation: dT/dt = alpha * (d2T/dx2 + d2T/dy2)
+        // alpha = k / (rho * cp)
+        const k = cell.material.thermal_conductivity;
+        const rho = cell.material.density;
+        const cp = cell.material.specific_heat;
+        const alpha = k / (rho * cp);
+
+        // Laplacian (Finite Difference)
+        const d2T = (top.temp + bottom.temp + left.temp + right.temp - 4 * cell.temp) / dx2;
+
+        // Update temperature
+        const change = alpha * d2T * TIME_STEP;
+        cell.nextTemp = cell.temp + change;
+      }
     }
 
-    return nextSamples;
+    // Apply Peltier Logic (Thermostat)
+    // If a sample has a target_temperature, force its cells to that temp
+    // and calculate power required (Q = m * c * dT / dt)
+    // Note: This is a simplified grid-level approximation
+    
+    // For now, we just update the grid. The sample-level logic needs to map back.
+
+
+    // Apply updates
+    const tempGrid: number[][] = [];
+    for (let y = 0; y < this.height; y++) {
+      const row: number[] = [];
+      for (let x = 0; x < this.width; x++) {
+        this.grid[y][x].temp = this.grid[y][x].nextTemp;
+        row.push(this.c2f(this.grid[y][x].temp));
+      }
+      tempGrid.push(row);
+    }
+
+    // Update Sample Average Temperatures (for UI)
+    // Note: In a real app, we'd map grid cells back to samples to get accurate averages
+    // For now, we return the grid for visualization
+    
+    return { grid: tempGrid, samples: [] }; // Samples update logic to be added if needed
+  }
+
+  getGrid() {
+    return this.grid.map(row => row.map(cell => this.c2f(cell.temp)));
   }
 }
