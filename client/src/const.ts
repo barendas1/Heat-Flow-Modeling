@@ -15,3 +15,7 @@ export const getLoginUrl = () => {
 
   return url.toString();
 };
+
+export const PIXELS_PER_INCH = 20; // 1 inch = 20 pixels
+export const MM_PER_INCH = 25.4;
+export const PIXEL_SIZE_MM = MM_PER_INCH / PIXELS_PER_INCH; // ~1.27mm per pixel

@@ -1,18 +1,10 @@
 import { Container, Sample, Material } from '../types';
 import { MaterialLibrary } from './MaterialLibrary';
+import { PIXEL_SIZE_MM } from '../const';
 
 // Constants
-const PIXEL_SIZE_MM = 2; // 1 pixel = 2mm (Balance between accuracy and performance)
+// PIXEL_SIZE_MM is now imported from const.ts (~1.27mm)
 const PIXEL_AREA = (PIXEL_SIZE_MM / 1000) ** 2; // m²
-const TIME_STEP = 0.05; // Seconds
-
-interface GridCell {
-  temp: number; // Celsius
-  nextTemp: number; // Celsius
-  material: Material;
-  isBoundary: boolean; // Is this a fixed boundary condition?
-  sampleId?: string; // ID of the sample this cell belongs to (if any)
-}
 
 export class GridPhysicsEngine {
   private grid: GridCell[][] = [];
@@ -31,7 +23,6 @@ export class GridPhysicsEngine {
   // Initialize the grid based on container and samples
   initialize(container: Container, samples: Sample[], canvasWidth: number, canvasHeight: number) {
     // Increase resolution: 1 grid cell = 1 canvas pixel (High Fidelity)
-    // Previously it was canvasWidth / 2
     this.width = Math.ceil(canvasWidth); 
     this.height = Math.ceil(canvasHeight);
     this.grid = [];
@@ -115,54 +106,71 @@ export class GridPhysicsEngine {
 
   // Perform one simulation step (Finite Difference Method)
   step(): { grid: number[][], samples: Sample[] } {
-    this.time += TIME_STEP;
+    // Time step (seconds per frame)
+    // For stability, dt < dx^2 / (4 * alpha_max)
+    // With dx=1mm, alpha_water ~ 0.14 mm^2/s -> dt < 1.7s
+    // We'll use a safe timestep, but run multiple sub-steps per frame for speed
+    // INCREASED SPEED: 20 sub-steps per frame to make cooling visible faster
+    const dt = 0.5;
+    const subSteps = 20;
+    
     const dx = PIXEL_SIZE_MM / 1000; // meters
     const dx2 = dx * dx;
 
-    // Update Grid Temperatures
-    for (let y = 1; y < this.height - 1; y++) {
-      for (let x = 1; x < this.width - 1; x++) {
-        const cell = this.grid[y][x];
-        if (cell.isBoundary) continue;
+    for (let step = 0; step < subSteps; step++) {
+      this.time += dt;
 
-        // Peltier Logic: If this cell belongs to a sample with active heating, hold temp
-        if (cell.sampleId) {
-          const sample = this.samples.find(s => s.id === cell.sampleId);
-          if (sample && sample.peltier_active && sample.target_temperature !== undefined) {
-             cell.nextTemp = this.f2c(sample.target_temperature);
-             continue; // Skip physics update for this cell (it's clamped)
+      // Update Grid Temperatures
+      for (let y = 1; y < this.height - 1; y++) {
+        for (let x = 1; x < this.width - 1; x++) {
+          const cell = this.grid[y][x];
+          if (cell.isBoundary) continue;
+
+          // Peltier Logic: If this cell belongs to a sample with active heating, hold temp
+          if (cell.sampleId) {
+            const sample = this.samples.find(s => s.id === cell.sampleId);
+            if (sample && sample.peltier_active && sample.target_temperature !== undefined) {
+               cell.nextTemp = this.f2c(sample.target_temperature);
+               continue; // Skip physics update for this cell (it's clamped)
+            }
           }
+
+          const top = this.grid[y-1][x];
+          const bottom = this.grid[y+1][x];
+          const left = this.grid[y][x-1];
+          const right = this.grid[y][x+1];
+
+          // 2D Heat Equation: dT/dt = alpha * (d2T/dx2 + d2T/dy2)
+          // alpha = k / (rho * cp)
+          const k = cell.material.thermal_conductivity;
+          const rho = cell.material.density;
+          const cp = cell.material.specific_heat;
+          const alpha = k / (rho * cp);
+
+          // Laplacian (Finite Difference)
+          const d2T = (top.temp + bottom.temp + left.temp + right.temp - 4 * cell.temp) / dx2;
+
+          // Update temperature
+          const change = alpha * d2T * dt;
+          cell.nextTemp = cell.temp + change;
         }
+      }
 
-        const top = this.grid[y-1][x];
-        const bottom = this.grid[y+1][x];
-        const left = this.grid[y][x-1];
-        const right = this.grid[y][x+1];
-
-        // 2D Heat Equation: dT/dt = alpha * (d2T/dx2 + d2T/dy2)
-        // alpha = k / (rho * cp)
-        const k = cell.material.thermal_conductivity;
-        const rho = cell.material.density;
-        const cp = cell.material.specific_heat;
-        const alpha = k / (rho * cp);
-
-        // Laplacian (Finite Difference)
-        const d2T = (top.temp + bottom.temp + left.temp + right.temp - 4 * cell.temp) / dx2;
-
-        // Update temperature
-        const change = alpha * d2T * TIME_STEP;
-        cell.nextTemp = cell.temp + change;
+      // Swap buffers (Synchronous update)
+      for (let y = 0; y < this.height; y++) {
+        for (let x = 0; x < this.width; x++) {
+          this.grid[y][x].temp = this.grid[y][x].nextTemp;
+        }
       }
     }
 
-    // Apply updates and calculate average sample temps
+    // Prepare output grid and calculate average sample temps
     const tempGrid: number[][] = [];
     const sampleTemps: Record<string, { sum: number, count: number }> = {};
 
     for (let y = 0; y < this.height; y++) {
       const row: number[] = [];
       for (let x = 0; x < this.width; x++) {
-        this.grid[y][x].temp = this.grid[y][x].nextTemp;
         const tempF = this.c2f(this.grid[y][x].temp);
         row.push(tempF);
 
@@ -182,7 +190,7 @@ export class GridPhysicsEngine {
       if (sampleTemps[s.id]) {
         return {
           ...s,
-          current_temperature: sampleTemps[s.id].sum / sampleTemps[s.id].count
+          temperature: sampleTemps[s.id].sum / sampleTemps[s.id].count
         };
       }
       return s;
@@ -195,4 +203,12 @@ export class GridPhysicsEngine {
   getGrid() {
     return this.grid.map(row => row.map(cell => this.c2f(cell.temp)));
   }
+}
+
+interface GridCell {
+  temp: number; // Celsius
+  nextTemp: number; // Celsius
+  material: Material;
+  isBoundary: boolean; // Is this a fixed boundary condition?
+  sampleId?: string; // ID of the sample this cell belongs to (if any)
 }
