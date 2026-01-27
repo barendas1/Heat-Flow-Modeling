@@ -44,15 +44,13 @@ export const Canvas: React.FC<CanvasProps> = ({
     };
   };
 
-  // Turbo Colormap (Google AI) - smoother and more perceptually uniform than Jet/Rainbow
+  // Turbo Colormap (Google AI)
   const getTurboColor = (t: number) => {
-    // kRed, kGreen, kBlue coefficients for Turbo colormap approximation
     const kRedVec4 = [0.13572138, 4.61539260, -42.66032258, 132.13108234, -152.94239396, 59.28637943];
     const kGreenVec4 = [0.09140261, 2.19418839, 4.84296658, -14.18503333, 4.27729857, 2.82956604];
     const kBlueVec4 = [0.10667330, 12.64194608, -60.58204836, 110.36276771, -89.90310912, 27.34824973];
 
     const x = Math.max(0, Math.min(1, t));
-    
     const v4 = [1, x, x * x, x * x * x, x * x * x * x, x * x * x * x * x];
     
     let r = 0, g = 0, b = 0;
@@ -75,16 +73,24 @@ export const Canvas: React.FC<CanvasProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Clear
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Clear with Gray Background (App Background)
+    ctx.fillStyle = '#F3F4F6'; // Gray-100
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
 
-    // 0. Draw Background (Blander)
-    ctx.fillStyle = container.fill_type === 'Water' ? '#E6F3FF' : '#FFF8E1'; // Light Blue or Light Yellow/Orange
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // --- 1. Draw Container Interior (Masked) ---
+    ctx.save();
+    ctx.beginPath();
+    if (container.shape === 'circle') {
+      ctx.arc(cx, cy, container.width / 2, 0, Math.PI * 2);
+    } else {
+      ctx.rect(cx - container.width / 2, cy - container.height / 2, container.width, container.height);
+    }
+    ctx.clip();
 
-    // 1. Draw Heatmap Grid (if available)
+    // Fill with Material Color or Heatmap
     if (showHeatmap && gridData) {
       const width = canvas.width;
       const height = canvas.height;
@@ -111,13 +117,12 @@ export const Canvas: React.FC<CanvasProps> = ({
           data[index] = color.r;
           data[index + 1] = color.g;
           data[index + 2] = color.b;
-          data[index + 3] = 255; // Full opacity
+          data[index + 3] = 255;
         }
       }
-      
       ctx.putImageData(imageData, 0, 0);
 
-      // Draw Isotherm Lines (Contours every 5 degrees)
+      // Draw Isotherms
       ctx.lineWidth = 1;
       const cellW = width / gridW;
       const cellH = height / gridH;
@@ -140,9 +145,14 @@ export const Canvas: React.FC<CanvasProps> = ({
            }
         }
       }
+    } else {
+      // Static Material Color
+      ctx.fillStyle = container.fill_type === 'Water' ? '#E6F3FF' : '#FFF8E1';
+      ctx.fill();
     }
+    ctx.restore(); // End Mask
 
-    // 2. Draw Container Boundary
+    // --- 2. Draw Container Border ---
     ctx.strokeStyle = selectedId === 'container' ? '#f8a24b' : '#3f4492';
     ctx.lineWidth = 3;
     ctx.beginPath();
@@ -153,14 +163,14 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
     ctx.stroke();
 
-    // 3. Draw Samples
+    // --- 3. Draw Samples ---
     samples.forEach(sample => {
       const isSelected = selectedId === sample.id;
       
       // Outer
       ctx.beginPath();
       ctx.arc(sample.x, sample.y, sample.radius, 0, Math.PI * 2);
-      ctx.fillStyle = '#A0A0A0'; // Aluminum color
+      ctx.fillStyle = '#A0A0A0';
       ctx.fill();
       if (isSelected) {
         ctx.strokeStyle = '#f8a24b';
@@ -168,25 +178,25 @@ export const Canvas: React.FC<CanvasProps> = ({
         ctx.stroke();
       }
 
-      // Middle (Insulation/Plastic)
+      // Middle
       ctx.beginPath();
       ctx.arc(sample.x, sample.y, sample.radius * sample.middle_radius_fraction, 0, Math.PI * 2);
       ctx.fillStyle = '#D0D0D0';
       ctx.fill();
 
-      // Core (Water)
+      // Core
       ctx.beginPath();
       ctx.arc(sample.x, sample.y, sample.radius * sample.core_radius_fraction, 0, Math.PI * 2);
-      ctx.fillStyle = '#4A90E2'; // Water color
+      ctx.fillStyle = '#4A90E2';
       ctx.fill();
     });
 
-    // 4. Draw Measurements (Toggle)
+    // --- 4. Draw Measurements ---
     if (showMeasurements) {
       ctx.font = '14px Inter';
       ctx.lineWidth = 1;
       
-      const drawLabel = (x: number, y: number, text: string, align: CanvasTextAlign = 'center') => {
+      const drawLabel = (x: number, y: number, text: string) => {
         const padding = 4;
         const width = ctx.measureText(text).width;
         ctx.fillStyle = 'rgba(255,255,255,0.8)';
@@ -199,36 +209,31 @@ export const Canvas: React.FC<CanvasProps> = ({
 
       // Container Dimensions
       if (container.shape === 'rectangle') {
-        // Width
         drawLabel(cx, cy - container.height/2 - 20, `${(container.width / PIXELS_PER_INCH).toFixed(1)}"`);
-        // Height
         drawLabel(cx - container.width/2 - 20, cy, `${(container.height / PIXELS_PER_INCH).toFixed(1)}"`);
       } else {
-        // Diameter
         drawLabel(cx, cy - container.width/2 - 20, `Ø ${(container.width / PIXELS_PER_INCH).toFixed(1)}"`);
       }
 
-      // Sample to Wall / Edge
-      samples.forEach(s => {
-        // Draw Label Name
+      // Sample Measurements
+      samples.forEach((s, i) => {
+        // Name Label
         ctx.font = 'bold 14px Inter';
         ctx.fillStyle = '#000';
         ctx.textAlign = 'center';
         ctx.fillText(s.name, s.x, s.y - s.radius - 15);
         
         ctx.font = '12px Inter';
-        // Distance to closest walls
+        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+        ctx.setLineDash([4, 4]);
+
+        // Distance to Walls
         if (container.shape === 'rectangle') {
            const leftWall = cx - container.width/2;
            const rightWall = cx + container.width/2;
            const topWall = cy - container.height/2;
            const bottomWall = cy + container.height/2;
            
-           // Draw lines to closest X and Y walls
-           ctx.strokeStyle = 'rgba(0,0,0,0.5)';
-           ctx.setLineDash([4, 4]);
-           
-           // X distance
            const distLeft = s.x - leftWall;
            const distRight = rightWall - s.x;
            if (distLeft < distRight) {
@@ -239,7 +244,6 @@ export const Canvas: React.FC<CanvasProps> = ({
              drawLabel((s.x + rightWall)/2, s.y, `${(distRight/PIXELS_PER_INCH).toFixed(1)}"`);
            }
 
-           // Y distance
            const distTop = s.y - topWall;
            const distBottom = bottomWall - s.y;
            if (distTop < distBottom) {
@@ -249,25 +253,33 @@ export const Canvas: React.FC<CanvasProps> = ({
              ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.x, bottomWall); ctx.stroke();
              drawLabel(s.x, (s.y + bottomWall)/2, `${(distBottom/PIXELS_PER_INCH).toFixed(1)}"`);
            }
-           ctx.setLineDash([]);
         } else {
-           // Distance to edge (Drum)
+           // Drum Wall
            const dx = s.x - cx;
            const dy = s.y - cy;
-           const distCenter = Math.sqrt(dx*dx + dy*dy);
            const angle = Math.atan2(dy, dx);
            const wallX = cx + Math.cos(angle) * (container.width/2);
            const wallY = cy + Math.sin(angle) * (container.width/2);
-           
            const distToWall = Math.sqrt((wallX - s.x)**2 + (wallY - s.y)**2);
            
-           ctx.strokeStyle = 'rgba(0,0,0,0.5)';
-           ctx.setLineDash([4, 4]);
            ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(wallX, wallY); ctx.stroke();
-           ctx.setLineDash([]);
-           
            drawLabel((s.x + wallX)/2, (s.y + wallY)/2, `${(distToWall/PIXELS_PER_INCH).toFixed(1)}"`);
         }
+
+        // Distance to Neighbors
+        for (let j = i + 1; j < samples.length; j++) {
+          const other = samples[j];
+          const dx = other.x - s.x;
+          const dy = other.y - s.y;
+          const dist = Math.sqrt(dx*dx + dy*dy);
+          
+          // Only draw if close enough to be relevant (< 10 inches)
+          if (dist < 10 * PIXELS_PER_INCH) {
+             ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(other.x, other.y); ctx.stroke();
+             drawLabel((s.x + other.x)/2, (s.y + other.y)/2, `${(dist/PIXELS_PER_INCH).toFixed(1)}"`);
+          }
+        }
+        ctx.setLineDash([]);
       });
     }
 
@@ -282,7 +294,6 @@ export const Canvas: React.FC<CanvasProps> = ({
       return;
     }
 
-    // Check sample click
     const clickedSample = samples.find(s => {
       const dx = s.x - x;
       const dy = s.y - y;
@@ -296,7 +307,6 @@ export const Canvas: React.FC<CanvasProps> = ({
       return;
     }
 
-    // Check container click (simplified)
     onSelect('container');
   };
 
@@ -334,9 +344,9 @@ export const Canvas: React.FC<CanvasProps> = ({
       onMouseUp={handleMouseUp}
       style={{ cursor: tool === 'add_sample' ? 'crosshair' : 'default' }}
     />
-    {/* In-Canvas Legend */}
+    {/* In-Canvas Legend (Moved Up) */}
     {showHeatmap && (
-      <div className="absolute bottom-4 left-4 bg-white/90 p-3 rounded-lg shadow-sm border border-gray-200 text-xs pointer-events-none">
+      <div className="absolute bottom-16 left-4 bg-white/90 p-3 rounded-lg shadow-sm border border-gray-200 text-xs pointer-events-none">
         <div className="font-semibold mb-2">Temperature (°F)</div>
         <div className="flex items-center gap-2">
           <div className="w-4 h-32 rounded bg-gradient-to-t from-[rgb(70,130,180)] via-[rgb(144,238,144)] to-[rgb(255,69,0)]"></div>

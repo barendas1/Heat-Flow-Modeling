@@ -3,7 +3,6 @@ import { MaterialLibrary } from './MaterialLibrary';
 import { PIXEL_SIZE_MM } from '../const';
 
 // Constants
-// PIXEL_SIZE_MM is now imported from const.ts (~1.27mm)
 const PIXEL_AREA = (PIXEL_SIZE_MM / 1000) ** 2; // m²
 
 export class GridPhysicsEngine {
@@ -102,6 +101,11 @@ export class GridPhysicsEngine {
       }
       this.grid.push(row);
     }
+  }
+
+  public getSampleTemp(id: string): number {
+    const sample = this.samples.find(s => s.id === id);
+    return sample ? sample.temperature : 0;
   }
 
   // Perform one simulation step (Finite Difference Method)
