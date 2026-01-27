@@ -9,7 +9,7 @@ interface CanvasProps {
   showMeasurements: boolean;
   selectedId: string | null;
   showHeatmap: boolean;
-  gridData: number[][] | null; // Temperature grid
+  gridData: number[][] | null;
   onContainerUpdate: (container: Container) => void;
   onSampleUpdate: (sample: Sample) => void;
   onSelect: (id: string | null) => void;
@@ -44,7 +44,6 @@ export const Canvas: React.FC<CanvasProps> = ({
     };
   };
 
-  // Turbo Colormap (Google AI)
   const getTurboColor = (t: number) => {
     const kRedVec4 = [0.13572138, 4.61539260, -42.66032258, 132.13108234, -152.94239396, 59.28637943];
     const kGreenVec4 = [0.09140261, 2.19418839, 4.84296658, -14.18503333, 4.27729857, 2.82956604];
@@ -73,14 +72,14 @@ export const Canvas: React.FC<CanvasProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Clear with Gray Background (App Background)
+    // 1. Clear with Gray Background (App Background)
     ctx.fillStyle = '#F3F4F6'; // Gray-100
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
 
-    // --- 1. Draw Container Interior (Masked) ---
+    // 2. Define Container Path (for Masking)
     ctx.save();
     ctx.beginPath();
     if (container.shape === 'circle') {
@@ -88,10 +87,11 @@ export const Canvas: React.FC<CanvasProps> = ({
     } else {
       ctx.rect(cx - container.width / 2, cy - container.height / 2, container.width, container.height);
     }
-    ctx.clip();
+    ctx.clip(); // STRICT MASK: Nothing draws outside this path
 
-    // Fill with Material Color or Heatmap
+    // 3. Fill Container Interior
     if (showHeatmap && gridData) {
+      // Draw Heatmap ONLY inside the clip
       const width = canvas.width;
       const height = canvas.height;
       const imageData = ctx.createImageData(width, height);
@@ -105,19 +105,22 @@ export const Canvas: React.FC<CanvasProps> = ({
       
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
+          // Optimization: Only calculate pixels roughly inside container bounding box
+          // But since we have a clip, we can just draw everything and the GPU handles the cut
           const gx = Math.floor((x / width) * gridW);
           const gy = Math.floor((y / height) * gridH);
           
-          const temp = gridData[gy][gx];
-          
-          const t = Math.max(0, Math.min(1, (temp - minTemp) / (maxTemp - minTemp)));
-          const color = getTurboColor(t);
-          
-          const index = (y * width + x) * 4;
-          data[index] = color.r;
-          data[index + 1] = color.g;
-          data[index + 2] = color.b;
-          data[index + 3] = 255;
+          if (gy >= 0 && gy < gridH && gx >= 0 && gx < gridW) {
+             const temp = gridData[gy][gx];
+             const t = Math.max(0, Math.min(1, (temp - minTemp) / (maxTemp - minTemp)));
+             const color = getTurboColor(t);
+             
+             const index = (y * width + x) * 4;
+             data[index] = color.r;
+             data[index + 1] = color.g;
+             data[index + 2] = color.b;
+             data[index + 3] = 255;
+          }
         }
       }
       ctx.putImageData(imageData, 0, 0);
@@ -146,13 +149,13 @@ export const Canvas: React.FC<CanvasProps> = ({
         }
       }
     } else {
-      // Static Material Color
+      // Static Material Color (Blue/Yellow)
       ctx.fillStyle = container.fill_type === 'Water' ? '#E6F3FF' : '#FFF8E1';
       ctx.fill();
     }
-    ctx.restore(); // End Mask
+    ctx.restore(); // END MASK
 
-    // --- 2. Draw Container Border ---
+    // 4. Draw Container Border (On top of mask)
     ctx.strokeStyle = selectedId === 'container' ? '#f8a24b' : '#3f4492';
     ctx.lineWidth = 3;
     ctx.beginPath();
@@ -163,7 +166,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
     ctx.stroke();
 
-    // --- 3. Draw Samples ---
+    // 5. Draw Samples
     samples.forEach(sample => {
       const isSelected = selectedId === sample.id;
       
@@ -191,7 +194,7 @@ export const Canvas: React.FC<CanvasProps> = ({
       ctx.fill();
     });
 
-    // --- 4. Draw Measurements ---
+    // 6. Draw Measurements
     if (showMeasurements) {
       ctx.font = '14px Inter';
       ctx.lineWidth = 1;
