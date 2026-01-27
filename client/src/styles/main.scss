@@ -100,6 +100,8 @@ body {
   padding: 16px;
   overflow-y: auto;
   z-index: 10;
+  display: flex;
+  flex-direction: column;
 }
 
 .sidebar-left {
@@ -112,64 +114,68 @@ body {
   box-shadow: -5px 0 15px rgba(0,0,0,0.02);
 }
 
-/* Compact Toolbar */
-.compact-toolbar {
+/* Toolbar Styling - Fixed */
+.toolbar {
   position: absolute;
   top: 1rem;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
+  flex-direction: row; /* Force horizontal */
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px !important;
+  gap: 12px;
+  padding: 8px 16px !important;
   height: 50px;
   z-index: 20;
+  background: $body-bg;
+  border-radius: 16px;
+  white-space: nowrap; /* Prevent wrapping */
 }
 
-.toolbar-group {
+.tool-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+  color: #666;
+  transition: all 0.2s;
   display: flex;
-  gap: 4px;
+  align-items: center;
+  justify-content: center;
+
+  &:hover {
+    background: rgba(0,0,0,0.05);
+    color: $primary;
+  }
+
+  &.active {
+    background: rgba(63, 68, 146, 0.1);
+    color: $primary;
+  }
+  
+  &.primary {
+    color: $primary;
+  }
 }
 
-.toolbar-divider {
+.divider {
   width: 1px;
   height: 24px;
   background-color: #ddd;
   margin: 0 4px;
 }
 
-.small-btn {
-  padding: 6px 10px !important;
-  font-size: 13px !important;
-  height: 32px;
+.layout-controls {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 8px;
 }
 
-.small-input {
+.small-select {
   padding: 4px 8px !important;
   font-size: 13px !important;
   height: 32px;
-  width: auto !important;
-}
-
-.stats-bar {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 40px;
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(5px);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 2rem;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.85rem;
-  color: $secondary;
-  border-top: 1px solid rgba(255, 255, 255, 0.5);
 }
 
 // Components
@@ -188,12 +194,6 @@ body {
   padding: 12px;
   border-radius: 12px;
   border: 1px solid #eee;
-}
-
-.sub-group {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px dashed #ddd;
 }
 
 .form-row {
@@ -228,12 +228,26 @@ body {
   }
 }
 
-.checkbox-row {
-  justify-content: flex-start;
-  gap: 10px;
+.toggle-group {
+  display: flex;
+  background: #e0e0e0;
+  padding: 2px;
+  border-radius: 6px;
   
-  label {
-    margin-right: auto;
+  .toggle-btn {
+    padding: 4px 8px;
+    font-size: 12px;
+    border: none;
+    background: transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    color: #666;
+    
+    &.active {
+      background: #fff;
+      color: $primary;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
   }
 }
 
@@ -255,4 +269,8 @@ select.neumorphic-input {
   background-position: right 8px center;
   background-size: 16px;
   padding-right: 30px;
+}
+
+.legend {
+  margin-top: auto; /* Push to bottom */
 }

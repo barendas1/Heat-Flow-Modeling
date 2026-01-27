@@ -14,7 +14,7 @@ const Icons = {
   Pause: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>,
   Reset: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>,
   Save: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>,
-  Ruler: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 6v12h20V6H2zm2 10V8h2v3h2V8h2v3h2V8h2v3h2V8h2v3h2V8h2v3h2V8h2v3h2V8h2v8H4z"/></svg>,
+  Ruler: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 6v12h20V6H2zm2 10V8h2v3h2V8h2v3h2V8h2v3h2V8h2v3h2V8h2v3h2V8h2v3h2V8h2v3h2V8h2v8H4z"/></svg>,
   Export: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>,
   ZoomIn: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/><path d="M12 10h-2v2H9v-2H7V9h2V7h1v2h2v1z"/></svg>,
   ZoomOut: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/><path d="M7 9h5v1H7z"/></svg>
@@ -42,6 +42,8 @@ const App: React.FC = () => {
   const [simSpeed, setSimSpeed] = useState(1); // 1x, 5x, 10x, 20x
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   
   const physicsRef = useRef(new GridPhysicsEngine());
   const [gridData, setGridData] = useState<number[][] | null>(null);
@@ -262,6 +264,25 @@ const App: React.FC = () => {
     setSamples(samples.map(s => s.id === updated.id ? updated : s));
   };
 
+  // Canvas Drag Handlers
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (tool !== 'select') return;
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    setPan({
+      x: e.clientX - dragStart.x,
+      y: e.clientY - dragStart.y
+    });
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
   const selectedObject = selectedId === 'container' ? container : samples.find(s => s.id === selectedId);
   const interferenceReport = InterferenceCalculator.getInterferenceReport(samples, container);
 
@@ -423,10 +444,28 @@ const App: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Legend Moved Here */}
+        <div className="legend mt-auto p-3 bg-gray-50 rounded-lg border border-gray-200">
+          <h4 className="text-xs font-bold mb-2">Temperature Map</h4>
+          <div className="gradient-bar h-4 w-full rounded mb-1" style={{ background: 'linear-gradient(to right, #30123b, #4686fa, #1ae4b6, #a9f759, #fbb41a, #e64616, #7a0403)' }}></div>
+          <div className="flex justify-between text-xs text-gray-500">
+            <span>70°F</span>
+            <span>95°F</span>
+            <span>120°F</span>
+          </div>
+        </div>
       </div>
 
       {/* Center: Canvas Area */}
-      <div className="canvas-area">
+      <div 
+        className="canvas-area"
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+      >
         <div className="toolbar neumorphic-panel">
           <button className="tool-btn" onClick={handleSave} title="Save Setup"><Icons.Save /></button>
           <label className="tool-btn" title="Load Setup">
@@ -487,10 +526,10 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        <div className="canvas-wrapper" style={{ overflow: 'hidden', position: 'relative' }}>
+        <div className="canvas-wrapper" style={{ overflow: 'visible', position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div className="zoom-controls absolute bottom-4 right-4 flex gap-2 z-10">
-             <button className="tool-btn bg-white" onClick={() => setZoom(z => Math.min(3, z + 0.1))}><Icons.ZoomIn /></button>
-             <button className="tool-btn bg-white" onClick={() => setZoom(z => Math.max(0.5, z - 0.1))}><Icons.ZoomOut /></button>
+             <button className="tool-btn bg-white" onClick={(e) => { e.stopPropagation(); setZoom(z => Math.min(3, z + 0.1)); }}><Icons.ZoomIn /></button>
+             <button className="tool-btn bg-white" onClick={(e) => { e.stopPropagation(); setZoom(z => Math.max(0.5, z - 0.1)); }}><Icons.ZoomOut /></button>
           </div>
           
           <div style={{ transform: `scale(${zoom}) translate(${pan.x}px, ${pan.y}px)`, transformOrigin: 'center center', transition: 'transform 0.1s' }}>
@@ -504,7 +543,10 @@ const App: React.FC = () => {
               gridData={gridData}
               onContainerUpdate={setContainer}
               onSampleUpdate={(updated) => setSamples(samples.map(s => s.id === updated.id ? updated : s))}
-              onSelect={setSelectedId}
+              onSelect={(id) => {
+                // Only select if we didn't drag significantly
+                if (!isDragging) setSelectedId(id);
+              }}
               onAddSample={() => {}}
             />
           </div>
@@ -527,16 +569,6 @@ const App: React.FC = () => {
                 {line}
               </div>
             ))}
-          </div>
-        </div>
-
-        <div className="legend mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
-          <h4 className="text-xs font-bold mb-2">Temperature Map</h4>
-          <div className="gradient-bar h-4 w-full rounded mb-1" style={{ background: 'linear-gradient(to right, #30123b, #4686fa, #1ae4b6, #a9f759, #fbb41a, #e64616, #7a0403)' }}></div>
-          <div className="flex justify-between text-xs text-gray-500">
-            <span>70°F</span>
-            <span>95°F</span>
-            <span>120°F</span>
           </div>
         </div>
       </div>
