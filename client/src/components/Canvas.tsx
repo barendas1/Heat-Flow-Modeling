@@ -79,7 +79,15 @@ export const Canvas: React.FC<CanvasProps> = ({
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
 
-    // 2. Define Container Path (for Masking)
+    // 2. Prepare Offscreen Buffer for Heatmap
+    // This ensures we can draw the full heatmap and then "stamp" it only where the container is
+    const buffer = document.createElement('canvas');
+    buffer.width = canvas.width;
+    buffer.height = canvas.height;
+    const bCtx = buffer.getContext('2d');
+    if (!bCtx) return;
+
+    // 3. Draw Container Mask on Main Canvas
     ctx.save();
     ctx.beginPath();
     if (container.shape === 'circle') {
@@ -89,12 +97,12 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
     ctx.clip(); // STRICT MASK: Nothing draws outside this path
 
-    // 3. Fill Container Interior
+    // 4. Draw Content Inside Mask
     if (showHeatmap && gridData) {
-      // Draw Heatmap ONLY inside the clip
+      // Draw Heatmap to Buffer first
       const width = canvas.width;
       const height = canvas.height;
-      const imageData = ctx.createImageData(width, height);
+      const imageData = bCtx.createImageData(width, height);
       const data = imageData.data;
       
       const minTemp = 70;
@@ -103,10 +111,14 @@ export const Canvas: React.FC<CanvasProps> = ({
       const gridH = gridData.length;
       const gridW = gridData[0].length;
       
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          // Optimization: Only calculate pixels roughly inside container bounding box
-          // But since we have a clip, we can just draw everything and the GPU handles the cut
+      // Optimization: Only iterate pixels inside the container bounding box
+      const startX = Math.max(0, Math.floor(cx - container.width / 2));
+      const endX = Math.min(width, Math.ceil(cx + container.width / 2));
+      const startY = Math.max(0, Math.floor(cy - container.height / 2));
+      const endY = Math.min(height, Math.ceil(cy + container.height / 2));
+
+      for (let y = startY; y < endY; y++) {
+        for (let x = startX; x < endX; x++) {
           const gx = Math.floor((x / width) * gridW);
           const gy = Math.floor((y / height) * gridH);
           
@@ -123,15 +135,24 @@ export const Canvas: React.FC<CanvasProps> = ({
           }
         }
       }
-      ctx.putImageData(imageData, 0, 0);
+      bCtx.putImageData(imageData, 0, 0);
+      
+      // Draw Buffer to Main Canvas (Mask applies here)
+      ctx.drawImage(buffer, 0, 0);
 
       // Draw Isotherms
       ctx.lineWidth = 1;
       const cellW = width / gridW;
       const cellH = height / gridH;
       
-      for (let y = 1; y < gridH; y++) {
-        for (let x = 1; x < gridW; x++) {
+      // Only draw isotherms inside bounding box
+      const startGX = Math.floor((startX / width) * gridW);
+      const endGX = Math.ceil((endX / width) * gridW);
+      const startGY = Math.floor((startY / height) * gridH);
+      const endGY = Math.ceil((endY / height) * gridH);
+
+      for (let y = Math.max(1, startGY); y < Math.min(gridH, endGY); y++) {
+        for (let x = Math.max(1, startGX); x < Math.min(gridW, endGX); x++) {
            const temp = gridData[y][x];
            const prevTemp = gridData[y][x-1];
            const topTemp = gridData[y-1][x];
@@ -155,7 +176,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
     ctx.restore(); // END MASK
 
-    // 4. Draw Container Border (On top of mask)
+    // 5. Draw Container Border (On top of mask)
     ctx.strokeStyle = selectedId === 'container' ? '#f8a24b' : '#3f4492';
     ctx.lineWidth = 3;
     ctx.beginPath();
@@ -166,7 +187,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
     ctx.stroke();
 
-    // 5. Draw Samples
+    // 6. Draw Samples
     samples.forEach(sample => {
       const isSelected = selectedId === sample.id;
       
@@ -194,7 +215,7 @@ export const Canvas: React.FC<CanvasProps> = ({
       ctx.fill();
     });
 
-    // 6. Draw Measurements
+    // 7. Draw Measurements
     if (showMeasurements) {
       ctx.font = '14px Inter';
       ctx.lineWidth = 1;
@@ -340,30 +361,13 @@ export const Canvas: React.FC<CanvasProps> = ({
     <>
     <canvas
       ref={canvasRef}
-      width={window.innerWidth - 350}
+      width={window.innerWidth - 600} // Adjusted for 2 sidebars (300px each)
       height={window.innerHeight}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       style={{ cursor: tool === 'add_sample' ? 'crosshair' : 'default' }}
     />
-    {/* In-Canvas Legend (Moved Up) */}
-    {showHeatmap && (
-      <div className="absolute bottom-16 left-4 bg-white/90 p-3 rounded-lg shadow-sm border border-gray-200 text-xs pointer-events-none">
-        <div className="font-semibold mb-2">Temperature (°F)</div>
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-32 rounded bg-gradient-to-t from-[rgb(70,130,180)] via-[rgb(144,238,144)] to-[rgb(255,69,0)]"></div>
-          <div className="flex flex-col justify-between h-32 text-gray-600">
-            <span>120°F</span>
-            <span>110°F</span>
-            <span>100°F</span>
-            <span>90°F</span>
-            <span>80°F</span>
-            <span>70°F</span>
-          </div>
-        </div>
-      </div>
-    )}
     </>
   );
 };

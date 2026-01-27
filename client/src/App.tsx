@@ -3,7 +3,7 @@ import { Canvas } from './components/Canvas';
 import { Container, Sample, ToolType, Material } from './types';
 import { GridPhysicsEngine } from './engine/PhysicsEngine';
 import { MaterialLibrary } from './engine/MaterialLibrary';
-import { InterferenceAnalyzer } from './engine/InterferenceAnalyzer';
+import { InterferenceCalculator } from './engine/InterferenceAnalyzer';
 import { TemperatureGraph } from './components/TemperatureGraph';
 import { PIXELS_PER_INCH } from './const';
 import './styles/main.scss';
@@ -52,7 +52,7 @@ const App: React.FC = () => {
 
   // Initialize Grid on Start
   useEffect(() => {
-    physicsRef.current.initialize(container, samples, window.innerWidth - 350, window.innerHeight);
+    physicsRef.current.initialize(container, samples, window.innerWidth - 600, window.innerHeight);
   }, [container, samples.length]);
 
   // Simulation Loop
@@ -62,13 +62,13 @@ const App: React.FC = () => {
       const loop = () => {
         const result = physicsRef.current.step();
         
-        // Throttle Grid Updates to 30 FPS (every 2nd frame) to save main thread for Chart
+        // Throttle Grid Updates to 30 FPS (every 2nd frame)
         if (frameCount % 2 === 0) {
           setGridData(result.grid);
         }
         
         // Update Graph Data every 30 frames (approx 0.5s)
-        timeRef.current += 0.016; // Approx 60fps
+        timeRef.current += 0.05; // 0.05s per tick
         frameCount++;
 
         if (frameCount % 30 === 0) {
@@ -122,7 +122,7 @@ const App: React.FC = () => {
     };
     setSamples([...samples, newSample]);
     setTool('select');
-    physicsRef.current.initialize(container, [...samples, newSample], window.innerWidth - 350, window.innerHeight);
+    physicsRef.current.initialize(container, [...samples, newSample], window.innerWidth - 600, window.innerHeight);
   };
 
   const handleSave = () => {
@@ -167,7 +167,7 @@ const App: React.FC = () => {
   };
 
   const handleAutoLayout = (count: number) => {
-    const cx = (window.innerWidth - 350) / 2;
+    const cx = (window.innerWidth - 600) / 2;
     const cy = window.innerHeight / 2;
     const r = Math.min(container.width, container.height) / 3;
     
@@ -195,112 +195,16 @@ const App: React.FC = () => {
       });
     }
     setSamples(newSamples);
-    physicsRef.current.initialize(container, newSamples, window.innerWidth - 350, window.innerHeight);
+    physicsRef.current.initialize(container, newSamples, window.innerWidth - 600, window.innerHeight);
   };
 
   const selectedObject = selectedId === 'container' ? container : samples.find(s => s.id === selectedId);
+  const interferenceReport = InterferenceCalculator.getInterferenceReport(samples, container);
 
   return (
     <div className="app-container">
-      {/* Canvas Area */}
-      <div className="canvas-area">
-        <div className="toolbar neumorphic-panel compact-toolbar">
-          <div className="toolbar-group">
-             <button className="neumorphic-btn small-btn" onClick={handleSave} title="Save Setup"><Icons.Save /></button>
-             <label className="neumorphic-btn small-btn" title="Load Setup">
-               <input type="file" accept=".json" onChange={handleLoad} style={{ display: 'none' }} />
-               Load
-             </label>
-             <button className="neumorphic-btn small-btn" onClick={handleExportCSV} title="Export CSV"><Icons.Export /></button>
-          </div>
-          
-          <div className="toolbar-divider" />
-
-          <button 
-            className={`neumorphic-btn small-btn ${tool === 'select' ? 'active' : ''}`}
-            onClick={() => setTool('select')}
-            title="Select / Move"
-          >
-            Select
-          </button>
-          <button 
-            className={`neumorphic-btn small-btn ${showMeasurements ? 'active' : ''}`}
-            onClick={() => setShowMeasurements(!showMeasurements)}
-            title="Toggle Measurements"
-          >
-            <Icons.Ruler />
-          </button>
-          <button 
-            className={`neumorphic-btn small-btn ${tool === 'add_sample' ? 'active' : ''}`}
-            onClick={() => setTool('add_sample')}
-            title="Add Sample"
-          >
-            <Icons.Add />
-          </button>
-
-          <div className="toolbar-divider" />
-
-          <div className="flex items-center gap-2">
-            <select 
-              className="neumorphic-input small-input" 
-              value={autoLayoutCount}
-              onChange={(e) => setAutoLayoutCount(parseInt(e.target.value))}
-            >
-              {[1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n} Samples</option>)}
-            </select>
-            <button 
-              className="neumorphic-btn small-btn"
-              onClick={() => handleAutoLayout(autoLayoutCount)}
-              title="Auto-Arrange"
-            >
-              Layout
-            </button>
-          </div>
-
-          <div className="toolbar-divider" />
-
-          <button 
-            className={`neumorphic-btn small-btn ${isRunning ? 'active' : ''}`}
-            onClick={() => setIsRunning(!isRunning)}
-          >
-            {isRunning ? <Icons.Pause /> : <Icons.Play />}
-          </button>
-          <button 
-            className="neumorphic-btn small-btn"
-            onClick={() => {
-              setIsRunning(false);
-              setSamples(samples.map(s => ({ ...s, temperature: s.initial_temperature })));
-              setGraphData([]);
-              timeRef.current = 0;
-            }}
-          >
-            <Icons.Reset />
-          </button>
-        </div>
-
-        <Canvas 
-          container={container}
-          samples={samples}
-          tool={tool}
-          selectedId={selectedId}
-          showHeatmap={showHeatmap}
-          showMeasurements={showMeasurements}
-          gridData={gridData}
-          onContainerUpdate={setContainer}
-          onSampleUpdate={(updated) => setSamples(samples.map(s => s.id === updated.id ? updated : s))}
-          onSelect={setSelectedId}
-          onAddSample={handleAddSample}
-        />
-
-        <div className="stats-bar">
-          <span>Samples: {samples.length}</span>
-          <span>Avg Temp: {samples.length > 0 ? Math.round(samples.reduce((acc, s) => acc + s.temperature, 0) / samples.length) : 0}°F</span>
-          <span>Status: {isRunning ? 'Running' : 'Paused'}</span>
-        </div>
-      </div>
-
-      {/* Sidebar */}
-      <div className="sidebar neumorphic-panel">
+      {/* Left Sidebar: Properties */}
+      <div className="sidebar sidebar-left neumorphic-panel">
         <h2 className="section-title">Properties</h2>
         
         {!selectedObject && <div className="empty-state">Select an object to edit properties</div>}
@@ -482,11 +386,115 @@ const App: React.FC = () => {
             </div>
           </div>
         )}
+      </div>
 
+      {/* Center: Canvas Area */}
+      <div className="canvas-area">
+        <div className="toolbar neumorphic-panel compact-toolbar">
+          <div className="toolbar-group">
+             <button className="neumorphic-btn small-btn" onClick={handleSave} title="Save Setup"><Icons.Save /></button>
+             <label className="neumorphic-btn small-btn" title="Load Setup">
+               <input type="file" accept=".json" onChange={handleLoad} style={{ display: 'none' }} />
+               Load
+             </label>
+             <button className="neumorphic-btn small-btn" onClick={handleExportCSV} title="Export CSV"><Icons.Export /></button>
+          </div>
+          
+          <div className="toolbar-divider" />
+
+          <button 
+            className={`neumorphic-btn small-btn ${tool === 'select' ? 'active' : ''}`}
+            onClick={() => setTool('select')}
+            title="Select / Move"
+          >
+            Select
+          </button>
+          <button 
+            className={`neumorphic-btn small-btn ${showMeasurements ? 'active' : ''}`}
+            onClick={() => setShowMeasurements(!showMeasurements)}
+            title="Toggle Measurements"
+          >
+            <Icons.Ruler />
+          </button>
+          {/* Removed Add Button as requested */}
+
+          <div className="toolbar-divider" />
+
+          <div className="flex items-center gap-2">
+            <select 
+              className="neumorphic-input small-input" 
+              style={{ width: '120px' }} // Widened dropdown
+              value={autoLayoutCount}
+              onChange={(e) => setAutoLayoutCount(parseInt(e.target.value))}
+            >
+              {[1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n} Samples</option>)}
+            </select>
+            <button 
+              className="neumorphic-btn small-btn"
+              onClick={() => handleAutoLayout(autoLayoutCount)}
+              title="Auto-Arrange"
+            >
+              Layout
+            </button>
+          </div>
+
+          <div className="toolbar-divider" />
+
+          <button 
+            className={`neumorphic-btn small-btn ${isRunning ? 'active' : ''}`}
+            onClick={() => setIsRunning(!isRunning)}
+          >
+            {isRunning ? <Icons.Pause /> : <Icons.Play />}
+          </button>
+          <button 
+            className="neumorphic-btn small-btn"
+            onClick={() => {
+              setIsRunning(false);
+              setSamples(samples.map(s => ({ ...s, temperature: s.initial_temperature })));
+              setGraphData([]);
+              timeRef.current = 0;
+            }}
+          >
+            <Icons.Reset />
+          </button>
+        </div>
+
+        <Canvas 
+          container={container}
+          samples={samples}
+          tool={tool}
+          selectedId={selectedId}
+          showHeatmap={showHeatmap}
+          showMeasurements={showMeasurements}
+          gridData={gridData}
+          onContainerUpdate={setContainer}
+          onSampleUpdate={(updated) => setSamples(samples.map(s => s.id === updated.id ? updated : s))}
+          onSelect={setSelectedId}
+          onAddSample={handleAddSample}
+        />
+
+        <div className="stats-bar">
+          <span>Samples: {samples.length}</span>
+          <span>Avg Temp: {samples.length > 0 ? Math.round(samples.reduce((acc, s) => acc + s.temperature, 0) / samples.length) : 0}°F</span>
+          <span>Status: {isRunning ? 'Running' : 'Paused'}</span>
+        </div>
+      </div>
+
+      {/* Right Sidebar: Analysis */}
+      <div className="sidebar sidebar-right neumorphic-panel">
         <div className="analysis-panel">
           <h3 className="section-title">Analysis</h3>
-          <InterferenceAnalyzer samples={samples} container={container} />
-          <div className="h-40 mt-4">
+          
+          <div className="property-group">
+            <h4 className="text-xs font-bold text-gray-500 mb-2 uppercase">Interference Report</h4>
+            <div className="text-xs text-gray-600 max-h-40 overflow-y-auto">
+              {interferenceReport.map((line: string, i: number) => (
+                <div key={i} className="mb-1 pb-1 border-b border-gray-100 last:border-0">{line}</div>
+              ))}
+            </div>
+          </div>
+
+          <div className="h-60 mt-4">
             <TemperatureGraph data={graphData} />
           </div>
         </div>

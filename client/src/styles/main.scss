@@ -95,13 +95,21 @@ body {
 }
 
 .sidebar {
-  width: 350px;
+  width: 300px; // Reduced from 350px to fit both sides
   background: #fff;
-  border-left: 1px solid rgba(0,0,0,0.05);
   padding: 16px;
   overflow-y: auto;
-  box-shadow: -5px 0 15px rgba(0,0,0,0.02);
   z-index: 10;
+}
+
+.sidebar-left {
+  border-right: 1px solid rgba(0,0,0,0.05);
+  box-shadow: 5px 0 15px rgba(0,0,0,0.02);
+}
+
+.sidebar-right {
+  border-left: 1px solid rgba(0,0,0,0.05);
+  box-shadow: -5px 0 15px rgba(0,0,0,0.02);
 }
 
 /* Compact Toolbar */

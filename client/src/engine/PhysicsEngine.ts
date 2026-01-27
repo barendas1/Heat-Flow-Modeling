@@ -1,16 +1,25 @@
 import { Container, Sample, Material } from '../types';
 import { MaterialLibrary } from './MaterialLibrary';
-import { PIXEL_SIZE_MM } from '../const';
 
 // Constants
+const PIXEL_SIZE_MM = 4; // Increased from 2mm to 4mm for performance (1 grid cell = 4x4 screen pixels)
 const PIXEL_AREA = (PIXEL_SIZE_MM / 1000) ** 2; // m²
+const TIME_STEP = 0.05; // Seconds
+
+interface GridCell {
+  temp: number; // Celsius
+  nextTemp: number; // Celsius
+  material: Material;
+  isBoundary: boolean; // Is this a fixed boundary condition?
+}
 
 export class GridPhysicsEngine {
   private grid: GridCell[][] = [];
   private width: number = 0;
   private height: number = 0;
   private time: number = 0;
-  private samples: Sample[] = []; // Keep reference to samples for Peltier logic
+  // Cache sample ID to grid cells mapping for fast temperature lookup
+  private sampleCells: Map<string, {x: number, y: number}[]> = new Map();
 
   constructor() {}
 
@@ -21,12 +30,12 @@ export class GridPhysicsEngine {
 
   // Initialize the grid based on container and samples
   initialize(container: Container, samples: Sample[], canvasWidth: number, canvasHeight: number) {
-    // Increase resolution: 1 grid cell = 1 canvas pixel (High Fidelity)
-    this.width = Math.ceil(canvasWidth); 
-    this.height = Math.ceil(canvasHeight);
+    // Downsample by 4 for performance (4x4 pixels = 1 grid cell)
+    this.width = Math.ceil(canvasWidth / 4); 
+    this.height = Math.ceil(canvasHeight / 4);
     this.grid = [];
     this.time = 0;
-    this.samples = samples;
+    this.sampleCells.clear();
 
     const ambientC = this.f2c(container.ambient_temperature);
 
@@ -34,15 +43,13 @@ export class GridPhysicsEngine {
       const row: GridCell[] = [];
       for (let x = 0; x < this.width; x++) {
         // Map grid coordinates back to world coordinates (pixels)
-        // Now 1:1 mapping
-        const worldX = x;
-        const worldY = y;
+        const worldX = x * 4;
+        const worldY = y * 4;
 
         // Determine material at this point
         let material = container.fill_material;
         let temp = ambientC;
         let isBoundary = false;
-        let sampleId: string | undefined = undefined;
 
         // Check if inside container
         let insideContainer = false;
@@ -74,18 +81,24 @@ export class GridPhysicsEngine {
             const dist = Math.sqrt(dx*dx + dy*dy);
 
             if (dist <= sample.radius) {
-              sampleId = sample.id;
               // Determine layer
               if (dist <= sample.radius * sample.core_radius_fraction) {
                 material = sample.core_material;
                 temp = this.f2c(sample.initial_temperature);
               } else if (dist <= sample.radius * sample.middle_radius_fraction) {
                 material = sample.middle_material;
-                temp = this.f2c(sample.initial_temperature); // Simplified: whole sample starts at init temp
+                temp = this.f2c(sample.initial_temperature); 
               } else {
                 material = sample.outer_material;
                 temp = this.f2c(sample.initial_temperature);
               }
+              
+              // Cache cell location for this sample
+              if (!this.sampleCells.has(sample.id)) {
+                this.sampleCells.set(sample.id, []);
+              }
+              this.sampleCells.get(sample.id)?.push({x, y});
+              
               break;
             }
           }
@@ -95,124 +108,73 @@ export class GridPhysicsEngine {
           temp,
           nextTemp: temp,
           material,
-          isBoundary,
-          sampleId
+          isBoundary
         });
       }
       this.grid.push(row);
     }
   }
 
-  public getSampleTemp(id: string): number {
-    const sample = this.samples.find(s => s.id === id);
-    return sample ? sample.temperature : 0;
-  }
-
   // Perform one simulation step (Finite Difference Method)
   step(): { grid: number[][], samples: Sample[] } {
-    // Time step (seconds per frame)
-    // For stability, dt < dx^2 / (4 * alpha_max)
-    // With dx=1mm, alpha_water ~ 0.14 mm^2/s -> dt < 1.7s
-    // We'll use a safe timestep, but run multiple sub-steps per frame for speed
-    // INCREASED SPEED: 20 sub-steps per frame to make cooling visible faster
-    const dt = 0.5;
-    const subSteps = 20;
-    
+    this.time += TIME_STEP;
     const dx = PIXEL_SIZE_MM / 1000; // meters
     const dx2 = dx * dx;
 
-    for (let step = 0; step < subSteps; step++) {
-      this.time += dt;
+    // Update Grid Temperatures
+    for (let y = 1; y < this.height - 1; y++) {
+      for (let x = 1; x < this.width - 1; x++) {
+        const cell = this.grid[y][x];
+        if (cell.isBoundary) continue;
 
-      // Update Grid Temperatures
-      for (let y = 1; y < this.height - 1; y++) {
-        for (let x = 1; x < this.width - 1; x++) {
-          const cell = this.grid[y][x];
-          if (cell.isBoundary) continue;
+        const top = this.grid[y-1][x];
+        const bottom = this.grid[y+1][x];
+        const left = this.grid[y][x-1];
+        const right = this.grid[y][x+1];
 
-          // Peltier Logic: If this cell belongs to a sample with active heating, hold temp
-          if (cell.sampleId) {
-            const sample = this.samples.find(s => s.id === cell.sampleId);
-            if (sample && sample.peltier_active && sample.target_temperature !== undefined) {
-               cell.nextTemp = this.f2c(sample.target_temperature);
-               continue; // Skip physics update for this cell (it's clamped)
-            }
-          }
+        // 2D Heat Equation: dT/dt = alpha * (d2T/dx2 + d2T/dy2)
+        // alpha = k / (rho * cp)
+        const k = cell.material.thermal_conductivity;
+        const rho = cell.material.density;
+        const cp = cell.material.specific_heat;
+        const alpha = k / (rho * cp);
 
-          const top = this.grid[y-1][x];
-          const bottom = this.grid[y+1][x];
-          const left = this.grid[y][x-1];
-          const right = this.grid[y][x+1];
+        // Laplacian (Finite Difference)
+        const d2T = (top.temp + bottom.temp + left.temp + right.temp - 4 * cell.temp) / dx2;
 
-          // 2D Heat Equation: dT/dt = alpha * (d2T/dx2 + d2T/dy2)
-          // alpha = k / (rho * cp)
-          const k = cell.material.thermal_conductivity;
-          const rho = cell.material.density;
-          const cp = cell.material.specific_heat;
-          const alpha = k / (rho * cp);
-
-          // Laplacian (Finite Difference)
-          const d2T = (top.temp + bottom.temp + left.temp + right.temp - 4 * cell.temp) / dx2;
-
-          // Update temperature
-          const change = alpha * d2T * dt;
-          cell.nextTemp = cell.temp + change;
-        }
-      }
-
-      // Swap buffers (Synchronous update)
-      for (let y = 0; y < this.height; y++) {
-        for (let x = 0; x < this.width; x++) {
-          this.grid[y][x].temp = this.grid[y][x].nextTemp;
-        }
+        // Update temperature
+        const change = alpha * d2T * TIME_STEP;
+        cell.nextTemp = cell.temp + change;
       }
     }
 
-    // Prepare output grid and calculate average sample temps
+    // Apply updates
     const tempGrid: number[][] = [];
-    const sampleTemps: Record<string, { sum: number, count: number }> = {};
-
     for (let y = 0; y < this.height; y++) {
       const row: number[] = [];
       for (let x = 0; x < this.width; x++) {
-        const tempF = this.c2f(this.grid[y][x].temp);
-        row.push(tempF);
-
-        // Accumulate sample temps
-        if (this.grid[y][x].sampleId) {
-          const id = this.grid[y][x].sampleId!;
-          if (!sampleTemps[id]) sampleTemps[id] = { sum: 0, count: 0 };
-          sampleTemps[id].sum += tempF;
-          sampleTemps[id].count++;
-        }
+        this.grid[y][x].temp = this.grid[y][x].nextTemp;
+        row.push(this.c2f(this.grid[y][x].temp));
       }
       tempGrid.push(row);
     }
 
-    // Update sample objects with new average temperatures
-    const updatedSamples = this.samples.map(s => {
-      if (sampleTemps[s.id]) {
-        return {
-          ...s,
-          temperature: sampleTemps[s.id].sum / sampleTemps[s.id].count
-        };
-      }
-      return s;
-    });
-    this.samples = updatedSamples; // Keep local state synced
+    return { grid: tempGrid, samples: [] };
+  }
 
-    return { grid: tempGrid, samples: updatedSamples };
+  // Get average temperature for a specific sample
+  getSampleTemp(sampleId: string): number {
+    const cells = this.sampleCells.get(sampleId);
+    if (!cells || cells.length === 0) return 0;
+
+    let sum = 0;
+    for (const pos of cells) {
+      sum += this.grid[pos.y][pos.x].temp;
+    }
+    return this.c2f(sum / cells.length);
   }
 
   getGrid() {
     return this.grid.map(row => row.map(cell => this.c2f(cell.temp)));
   }
-}
-
-interface GridCell {
-  temp: number; // Celsius
-  nextTemp: number; // Celsius
-  material: Material;
-  isBoundary: boolean; // Is this a fixed boundary condition?
-  sampleId?: string; // ID of the sample this cell belongs to (if any)
 }
