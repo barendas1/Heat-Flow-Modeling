@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Canvas } from './components/Canvas';
 import { Container, Sample, ToolType, Material } from './types';
-import { GridPhysicsEngine } from './engine/GridPhysicsEngine';
+import { GridPhysicsEngine } from './engine/PhysicsEngine';
 import { MaterialLibrary } from './engine/MaterialLibrary';
 import { InterferenceAnalyzer } from './engine/InterferenceAnalyzer';
 import { TemperatureGraph } from './components/TemperatureGraph';
