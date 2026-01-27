@@ -14,7 +14,7 @@ const Icons = {
   Pause: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>,
   Reset: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>,
   Save: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>,
-  Ruler: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 6v12h20V6H2zm2 10V8h2v3h2V8h2v3h2V8h2v3h2V8h2v3h2V8h2v3h2V8h2v3h2V8h2v3h2V8h2v8H4z"/></svg>,
+  Ruler: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 6v12h20V6H2zm2 10V8h2v3h2V8h2v3h2V8h2v3h2V8h2v3h2V8h2v3h2V8h2v3h2V8h2v3h2V8h2v3h2V8h2v8H4z"/></svg>,
   Export: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>,
   ZoomIn: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/><path d="M12 10h-2v2H9v-2H7V9h2V7h1v2h2v1z"/></svg>,
   ZoomOut: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/><path d="M7 9h5v1H7z"/></svg>
@@ -44,6 +44,7 @@ const App: React.FC = () => {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [elapsedTime, setElapsedTime] = useState(0);
   
   const physicsRef = useRef(new GridPhysicsEngine());
   const [gridData, setGridData] = useState<number[][] | null>(null);
@@ -73,6 +74,8 @@ const App: React.FC = () => {
           timeRef.current += 0.05; // 0.05s per tick
         }
         
+        setElapsedTime(timeRef.current);
+
         const result = physicsRef.current.getGrid(); // Get latest grid state
         
         // Throttle Grid Updates to 30 FPS (every 2nd frame)
@@ -156,13 +159,16 @@ const App: React.FC = () => {
   };
 
   const handleAutoLayout = (count: number) => {
+    // Safety check to prevent crash
+    if (count <= 0) return;
+
     const cx = (window.innerWidth - 600) / 2;
     const cy = window.innerHeight / 2;
     const materials = MaterialLibrary.getMaterials();
     const newSamples: Sample[] = [];
     
     const sampleRadius = (4 * PIXELS_PER_INCH) / 2; // Default 4" diameter
-    const padding = sampleRadius * 2.5; // Minimum spacing
+    const sampleDiameter = sampleRadius * 2;
 
     if (container.shape === 'circle') {
       // Circular Layout
@@ -172,22 +178,40 @@ const App: React.FC = () => {
         newSamples.push(createSample(i, cx + Math.cos(angle) * r, cy + Math.sin(angle) * r, materials));
       }
     } else {
-      // Rectangular Grid/Staggered Layout
-      // Calculate available space inside container (minus margins)
-      const margin = sampleRadius * 3; // Keep away from walls
+      // Best-Fit Optimizer for Rectangles
+      // We want to maximize the minimum distance between any two wells (and walls)
+      // We try different grid configurations (rows x cols) and pick the best one
+      
+      const margin = sampleRadius * 1.5; // Minimum wall clearance
       const availW = container.width - margin * 2;
       const availH = container.height - margin * 2;
       
-      // Calculate optimal grid (cols x rows)
-      const ratio = availW / availH;
-      let cols = Math.round(Math.sqrt(count * ratio));
-      let rows = Math.ceil(count / cols);
+      let bestLayout = { rows: 1, cols: count, spacing: 0 };
       
-      // Adjust if grid is too sparse
-      if (rows * cols < count) rows++;
-
-      const cellW = availW / (cols > 1 ? cols - 1 : 1);
-      const cellH = availH / (rows > 1 ? rows - 1 : 1);
+      // Try all factors
+      for (let r = 1; r <= count; r++) {
+        const c = Math.ceil(count / r);
+        // Calculate theoretical spacing for this grid
+        const spaceX = c > 1 ? availW / (c - 1) : 0;
+        const spaceY = r > 1 ? availH / (r - 1) : 0;
+        
+        // If single row/col, spacing is infinite in that direction, so take the other
+        // If single item, spacing is infinite
+        let minSpacing = 0;
+        if (count === 1) minSpacing = Infinity;
+        else if (r === 1) minSpacing = spaceX;
+        else if (c === 1) minSpacing = spaceY;
+        else minSpacing = Math.min(spaceX, spaceY);
+        
+        if (minSpacing > bestLayout.spacing) {
+          bestLayout = { rows: r, cols: c, spacing: minSpacing };
+        }
+      }
+      
+      // Apply Best Layout
+      const { rows, cols } = bestLayout;
+      const cellW = cols > 1 ? availW / (cols - 1) : 0;
+      const cellH = rows > 1 ? availH / (rows - 1) : 0;
       
       const startX = cx - availW / 2;
       const startY = cy - availH / 2;
@@ -196,27 +220,27 @@ const App: React.FC = () => {
         const row = Math.floor(i / cols);
         const col = i % cols;
         
-        // Center the last row if it's incomplete
         let x = startX + col * cellW;
-        if (row === rows - 1) {
-          const itemsInLastRow = count % cols || cols;
-          const rowWidth = (itemsInLastRow - 1) * cellW;
-          const rowStart = cx - rowWidth / 2;
-          x = rowStart + col * cellW;
-        }
+        let y = startY + row * cellH;
         
-        const y = startY + row * cellH;
+        // Center single items
+        if (cols === 1) x = cx;
+        if (rows === 1) y = cy;
         
-        // Fallback if only 1 item
-        if (count === 1) {
-          newSamples.push(createSample(i, cx, cy, materials));
-        } else {
-          newSamples.push(createSample(i, x, y, materials));
+        // Center the last row if incomplete
+        if (row === rows - 1 && count % cols !== 0) {
+           const itemsInLastRow = count % cols;
+           const rowWidth = (itemsInLastRow - 1) * cellW;
+           const rowStart = cx - rowWidth / 2;
+           x = rowStart + (i % cols) * cellW;
         }
+
+        newSamples.push(createSample(i, x, y, materials));
       }
     }
     
     setSamples(newSamples);
+    // Re-init physics immediately to prevent crash on next render
     physicsRef.current.initialize(container, newSamples, window.innerWidth - 600, window.innerHeight);
   };
 
@@ -246,8 +270,12 @@ const App: React.FC = () => {
     setSamples([]); // Clear all samples
     setGraphData([]); // Clear analytics
     timeRef.current = 0;
+    setElapsedTime(0);
     setGridData(null); // Clear heatmap
-    physicsRef.current.initialize(container, [], window.innerWidth - 600, window.innerHeight);
+    // Re-init physics safely
+    setTimeout(() => {
+        physicsRef.current.initialize(container, [], window.innerWidth - 600, window.innerHeight);
+    }, 0);
   };
 
   const updateSampleSize = (sample: Sample, newSize: SampleSize) => {
@@ -284,7 +312,7 @@ const App: React.FC = () => {
   };
 
   const selectedObject = selectedId === 'container' ? container : samples.find(s => s.id === selectedId);
-  const interferenceReport = InterferenceCalculator.getInterferenceReport(samples, container);
+  const interferenceReport = InterferenceCalculator.getInterferenceReport(samples, container, elapsedTime);
 
   return (
     <div className="app-container">
@@ -332,15 +360,7 @@ const App: React.FC = () => {
               </div>
             )}
 
-            <div className="form-row">
-              <label>Depth (in)</label>
-              <input 
-                type="number" 
-                className="neumorphic-input"
-                value={Math.round(container.depth / PIXELS_PER_INCH)}
-                onChange={(e) => setContainer({ ...container, depth: Number(e.target.value) * PIXELS_PER_INCH })}
-              />
-            </div>
+            {/* Depth Removed as requested */}
 
             <div className="form-row">
               <label>Fill Material</label>
@@ -353,16 +373,48 @@ const App: React.FC = () => {
                   setContainer({ ...container, fill_type: val, fill_material: mat });
                 }}
               >
-                {Object.keys(MaterialLibrary.getMaterials()).map(k => (
-                  <option key={k} value={k}>{k}</option>
-                ))}
+                <option value="Phenolic Foam">Phenolic Foam</option>
+                <option value="Water">Water</option>
               </select>
             </div>
 
-            <div className="property-details">
-               <p>Conductivity: {container.fill_material.thermal_conductivity} W/m·K</p>
-               <p>Specific Heat: {container.fill_material.specific_heat} J/kg·K</p>
-               <p>Density: {container.fill_material.density} kg/m³</p>
+            <div className="property-details mt-4">
+               <div className="form-row">
+                 <label>Conductivity (W/m·K)</label>
+                 <input 
+                   type="number" step="0.01"
+                   className="neumorphic-input"
+                   value={container.fill_material.thermal_conductivity}
+                   onChange={(e) => {
+                     const newMat = { ...container.fill_material, thermal_conductivity: Number(e.target.value) };
+                     setContainer({ ...container, fill_material: newMat });
+                   }}
+                 />
+               </div>
+               <div className="form-row">
+                 <label>Specific Heat (J/kg·K)</label>
+                 <input 
+                   type="number" step="10"
+                   className="neumorphic-input"
+                   value={container.fill_material.specific_heat}
+                   onChange={(e) => {
+                     const newMat = { ...container.fill_material, specific_heat: Number(e.target.value) };
+                     setContainer({ ...container, fill_material: newMat });
+                   }}
+                 />
+               </div>
+               <div className="form-row">
+                 <label>Density (kg/m³)</label>
+                 <input 
+                   type="number" step="10"
+                   className="neumorphic-input"
+                   value={container.fill_material.density}
+                   onChange={(e) => {
+                     const newMat = { ...container.fill_material, density: Number(e.target.value) };
+                     setContainer({ ...container, fill_material: newMat });
+                   }}
+                 />
+               </div>
             </div>
           </div>
         )}
@@ -565,7 +617,7 @@ const App: React.FC = () => {
           <h3 className="text-sm font-bold text-gray-700 mb-2">Interference Report</h3>
           <div className="report-list">
             {interferenceReport.map((line: string, i: number) => (
-              <div key={i} className={`report-item ${line.includes('No significant') ? 'text-green-600' : 'text-red-600'}`}>
+              <div key={i} className={`report-item ${line.includes('No significant') || line.includes('not started') ? 'text-green-600' : 'text-red-600'}`}>
                 {line}
               </div>
             ))}
