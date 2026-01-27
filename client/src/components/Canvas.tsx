@@ -191,9 +191,14 @@ export const Canvas: React.FC<CanvasProps> = ({
     samples.forEach(sample => {
       const isSelected = selectedId === sample.id;
       
+      // Calculate Visual Radii based on Thickness
+      const outerRadius = sample.radius;
+      const middleRadius = outerRadius - (sample.outer_thickness_in * PIXELS_PER_INCH);
+      const coreRadius = middleRadius - (sample.middle_thickness_in * PIXELS_PER_INCH);
+
       // Outer
       ctx.beginPath();
-      ctx.arc(sample.x, sample.y, sample.radius, 0, Math.PI * 2);
+      ctx.arc(sample.x, sample.y, Math.max(0, outerRadius), 0, Math.PI * 2);
       ctx.fillStyle = '#A0A0A0';
       ctx.fill();
       if (isSelected) {
@@ -203,16 +208,20 @@ export const Canvas: React.FC<CanvasProps> = ({
       }
 
       // Middle
-      ctx.beginPath();
-      ctx.arc(sample.x, sample.y, sample.radius * sample.middle_radius_fraction, 0, Math.PI * 2);
-      ctx.fillStyle = '#D0D0D0';
-      ctx.fill();
+      if (middleRadius > 0) {
+        ctx.beginPath();
+        ctx.arc(sample.x, sample.y, middleRadius, 0, Math.PI * 2);
+        ctx.fillStyle = '#D0D0D0';
+        ctx.fill();
+      }
 
       // Core
-      ctx.beginPath();
-      ctx.arc(sample.x, sample.y, sample.radius * sample.core_radius_fraction, 0, Math.PI * 2);
-      ctx.fillStyle = '#4A90E2';
-      ctx.fill();
+      if (coreRadius > 0) {
+        ctx.beginPath();
+        ctx.arc(sample.x, sample.y, coreRadius, 0, Math.PI * 2);
+        ctx.fillStyle = '#4A90E2';
+        ctx.fill();
+      }
     });
 
     // 7. Draw Measurements

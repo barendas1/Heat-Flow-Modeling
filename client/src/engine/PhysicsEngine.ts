@@ -1,8 +1,9 @@
 import { Container, Sample, Material } from '../types';
 import { MaterialLibrary } from './MaterialLibrary';
+import { PIXELS_PER_INCH } from '../const';
 
 // Constants
-const PIXEL_SIZE_MM = 4; // Increased from 2mm to 4mm for performance (1 grid cell = 4x4 screen pixels)
+const PIXEL_SIZE_MM = 4; // 1 grid cell = 4x4 screen pixels
 const PIXEL_AREA = (PIXEL_SIZE_MM / 1000) ** 2; // m²
 const TIME_STEP = 0.05; // Seconds
 
@@ -38,6 +39,47 @@ export class GridPhysicsEngine {
     this.sampleCells.clear();
 
     const ambientC = this.f2c(container.ambient_temperature);
+
+    // Pre-calculate Sample Geometry & Physics
+    const processedSamples = samples.map(s => {
+      // 1. Calculate Radii in Pixels
+      const outerRadius = s.radius;
+      const middleRadius = outerRadius - (s.outer_thickness_in * PIXELS_PER_INCH);
+      const coreRadius = middleRadius - (s.middle_thickness_in * PIXELS_PER_INCH);
+
+      // 2. Calculate Core Density based on Water Mass
+      // Volume = PI * r^2 * h
+      // We need r and h in meters for density (kg/m^3)
+      // But user inputs are in inches and lbs
+      
+      const heightIn = s.size === '2x4' ? 4 : 8;
+      const coreRadiusIn = coreRadius / PIXELS_PER_INCH;
+      
+      const volumeIn3 = Math.PI * (coreRadiusIn ** 2) * heightIn;
+      const volumeFt3 = volumeIn3 / 1728; // 1728 in^3 = 1 ft^3
+      const volumeM3 = volumeFt3 * 0.0283168; // 1 ft^3 = 0.0283168 m^3
+
+      const massKg = s.water_mass_lbs * 0.453592; // 1 lb = 0.453592 kg
+      
+      // Effective Density of the Core Material
+      const effectiveDensity = massKg / volumeM3;
+
+      // Create a custom material for the core with this density
+      const coreMat: Material = {
+        ...s.core_material,
+        density: effectiveDensity
+      };
+
+      return {
+        ...s,
+        calculated: {
+          outerRadius,
+          middleRadius,
+          coreRadius,
+          coreMat
+        }
+      };
+    });
 
     for (let y = 0; y < this.height; y++) {
       const row: GridCell[] = [];
@@ -75,17 +117,17 @@ export class GridPhysicsEngine {
           isBoundary = true; // Fixed ambient temp
         } else {
           // Check if inside any sample
-          for (const sample of samples) {
+          for (const sample of processedSamples) {
             const dx = worldX - sample.x;
             const dy = worldY - sample.y;
             const dist = Math.sqrt(dx*dx + dy*dy);
 
-            if (dist <= sample.radius) {
-              // Determine layer
-              if (dist <= sample.radius * sample.core_radius_fraction) {
-                material = sample.core_material;
+            if (dist <= sample.calculated.outerRadius) {
+              // Determine layer based on calculated radii
+              if (dist <= sample.calculated.coreRadius) {
+                material = sample.calculated.coreMat;
                 temp = this.f2c(sample.initial_temperature);
-              } else if (dist <= sample.radius * sample.middle_radius_fraction) {
+              } else if (dist <= sample.calculated.middleRadius) {
                 material = sample.middle_material;
                 temp = this.f2c(sample.initial_temperature); 
               } else {

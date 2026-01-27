@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Canvas } from './components/Canvas';
-import { Container, Sample, ToolType, Material } from './types';
+import { Container, Sample, ToolType, Material, SampleSize } from './types';
 import { GridPhysicsEngine } from './engine/PhysicsEngine';
 import { MaterialLibrary } from './engine/MaterialLibrary';
 import { InterferenceCalculator } from './engine/InterferenceAnalyzer';
@@ -15,7 +15,7 @@ const Icons = {
   Reset: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>,
   Add: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>,
   Save: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>,
-  Ruler: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 6v12h20V6H2zm2 10V8h2v3h2V8h2v3h2V8h2v3h2V8h2v3h2V8h2v8H4z"/></svg>,
+  Ruler: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 6v12h20V6H2zm2 10V8h2v3h2V8h2v3h2V8h2v3h2V8h2v3h2V8h2v3h2V8h2v8H4z"/></svg>,
   Export: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
 };
 
@@ -25,6 +25,7 @@ const App: React.FC = () => {
     shape: 'circle',
     width: 600,
     height: 400,
+    depth: 12 * PIXELS_PER_INCH, // Default 12 inches
     fill_material: MaterialLibrary.getMaterials()['Phenolic Foam'],
     fill_type: 'Phenolic Foam',
     wall_material: MaterialLibrary.getMaterials()['Plastic (PVC)'],
@@ -104,21 +105,31 @@ const App: React.FC = () => {
   // Handlers
   const handleAddSample = (x: number, y: number) => {
     const materials = MaterialLibrary.getMaterials();
+    const size: SampleSize = '4x8'; // Default
+    const radius = (4 * PIXELS_PER_INCH) / 2; // 4" diameter -> 2" radius
+
     const newSample: Sample = {
       id: Math.random().toString(36).substr(2, 9),
       x, y,
-      radius: 30,
+      radius,
       name: `Sample ${samples.length + 1}`,
+      size,
       outer_material: materials['Aluminum'],
       middle_material: materials['Plastic (PVC)'],
       core_material: materials['Water'],
+      
+      // Default Physical Properties
+      outer_thickness_in: 0.1,
+      middle_thickness_in: 0.1,
+      water_mass_lbs: 3.5, // Approx for 4x8
+
+      // Geometry (Will be recalculated by physics, but defaults here)
       outer_radius_fraction: 1.0,
-      middle_radius_fraction: 0.8,
-      core_radius_fraction: 0.6,
+      middle_radius_fraction: 0.9,
+      core_radius_fraction: 0.8,
+
       initial_temperature: 110,
-      temperature: 110,
-      peltier_active: false,
-      target_temperature: 110
+      temperature: 110
     };
     setSamples([...samples, newSample]);
     setTool('select');
@@ -176,26 +187,57 @@ const App: React.FC = () => {
     
     for (let i = 0; i < count; i++) {
       const angle = (i / count) * Math.PI * 2;
+      const size: SampleSize = '4x8';
+      const radius = (4 * PIXELS_PER_INCH) / 2;
+
       newSamples.push({
         id: Math.random().toString(36).substr(2, 9),
         x: cx + Math.cos(angle) * r,
         y: cy + Math.sin(angle) * r,
-        radius: 30,
+        radius,
         name: `Sample ${i + 1}`,
+        size,
         outer_material: materials['Aluminum'],
         middle_material: materials['Plastic (PVC)'],
         core_material: materials['Water'],
+        
+        outer_thickness_in: 0.1,
+        middle_thickness_in: 0.1,
+        water_mass_lbs: 3.5,
+
         outer_radius_fraction: 1.0,
-        middle_radius_fraction: 0.8,
-        core_radius_fraction: 0.6,
+        middle_radius_fraction: 0.9,
+        core_radius_fraction: 0.8,
+
         initial_temperature: 110,
-        temperature: 110,
-        peltier_active: false,
-        target_temperature: 110
+        temperature: 110
       });
     }
     setSamples(newSamples);
     physicsRef.current.initialize(container, newSamples, window.innerWidth - 600, window.innerHeight);
+  };
+
+  const handleReset = () => {
+    setIsRunning(false);
+    setSamples([]); // Clear all samples
+    setGraphData([]); // Clear analytics
+    timeRef.current = 0;
+    setGridData(null); // Clear heatmap
+    physicsRef.current.initialize(container, [], window.innerWidth - 600, window.innerHeight);
+  };
+
+  const updateSampleSize = (sample: Sample, newSize: SampleSize) => {
+    const diameter = newSize === '2x4' ? 2 : 4;
+    const radius = (diameter * PIXELS_PER_INCH) / 2;
+    const defaultMass = newSize === '2x4' ? 0.8 : 3.5; // Approx mass for water in that volume
+
+    const updated = { 
+      ...sample, 
+      size: newSize, 
+      radius,
+      water_mass_lbs: defaultMass
+    };
+    setSamples(samples.map(s => s.id === updated.id ? updated : s));
   };
 
   const selectedObject = selectedId === 'container' ? container : samples.find(s => s.id === selectedId);
@@ -248,6 +290,16 @@ const App: React.FC = () => {
             )}
 
             <div className="form-row">
+              <label>Depth (in)</label>
+              <input 
+                className="neumorphic-input"
+                type="number" 
+                value={(container.depth / PIXELS_PER_INCH).toFixed(1)}
+                onChange={(e) => setContainer({ ...container, depth: parseFloat(e.target.value) * PIXELS_PER_INCH })}
+              />
+            </div>
+
+            <div className="form-row">
               <label>Fill Material</label>
               <select 
                 className="neumorphic-input"
@@ -269,7 +321,7 @@ const App: React.FC = () => {
             <div className="sub-group">
               <h4 className="text-xs font-bold text-gray-500 mb-2 uppercase">Fill Properties</h4>
               <div className="form-row">
-                <label>Conductivity</label>
+                <label>Conductivity <span className="text-xs text-gray-400">(W/m·K)</span></label>
                 <input 
                   className="neumorphic-input"
                   type="number" step="0.01"
@@ -281,7 +333,7 @@ const App: React.FC = () => {
                 />
               </div>
               <div className="form-row">
-                <label>Specific Heat</label>
+                <label>Specific Heat <span className="text-xs text-gray-400">(J/kg·K)</span></label>
                 <input 
                   className="neumorphic-input"
                   type="number"
@@ -293,7 +345,7 @@ const App: React.FC = () => {
                 />
               </div>
               <div className="form-row">
-                <label>Density</label>
+                <label>Density <span className="text-xs text-gray-400">(kg/m³)</span></label>
                 <input 
                   className="neumorphic-input"
                   type="number"
@@ -312,74 +364,75 @@ const App: React.FC = () => {
           <div className="property-group">
             <h3 className="text-sm font-bold text-gray-700 mb-3">Sample: {(selectedObject as Sample).name}</h3>
             
-            <div className="form-row checkbox-row">
-              <label>Peltier Mode</label>
+            <div className="form-row mb-4">
+              <label>Size</label>
+              <div className="flex gap-2">
+                <button 
+                  className={`neumorphic-btn small-btn ${(selectedObject as Sample).size === '2x4' ? 'active' : ''}`}
+                  onClick={() => updateSampleSize(selectedObject as Sample, '2x4')}
+                >
+                  2" x 4"
+                </button>
+                <button 
+                  className={`neumorphic-btn small-btn ${(selectedObject as Sample).size === '4x8' ? 'active' : ''}`}
+                  onClick={() => updateSampleSize(selectedObject as Sample, '4x8')}
+                >
+                  4" x 8"
+                </button>
+              </div>
+            </div>
+
+            <div className="form-row">
+              <label>Start Temp (°F)</label>
               <input 
-                type="checkbox"
-                checked={(selectedObject as Sample).peltier_active}
+                className="neumorphic-input"
+                type="number"
+                value={(selectedObject as Sample).initial_temperature}
                 onChange={(e) => {
-                  const updated = { ...(selectedObject as Sample), peltier_active: e.target.checked };
+                  const updated = { ...(selectedObject as Sample), initial_temperature: parseFloat(e.target.value) };
                   setSamples(samples.map(s => s.id === updated.id ? updated : s));
                 }}
               />
             </div>
 
-            {(selectedObject as Sample).peltier_active && (
+            <div className="sub-group">
+              <h4 className="text-xs font-bold text-gray-500 mb-2 uppercase">Layer Properties</h4>
+              
               <div className="form-row">
-                <label>Target Temp (°F)</label>
+                <label>Aluminum Thickness <span className="text-xs text-gray-400">(in)</span></label>
                 <input 
                   className="neumorphic-input"
-                  type="number"
-                  value={(selectedObject as Sample).target_temperature}
+                  type="number" step="0.01"
+                  value={(selectedObject as Sample).outer_thickness_in}
                   onChange={(e) => {
-                    const updated = { ...(selectedObject as Sample), target_temperature: parseFloat(e.target.value) };
+                    const updated = { ...(selectedObject as Sample), outer_thickness_in: parseFloat(e.target.value) };
                     setSamples(samples.map(s => s.id === updated.id ? updated : s));
                   }}
                 />
               </div>
-            )}
-
-            <div className="sub-group">
-              <h4 className="text-xs font-bold text-gray-500 mb-2 uppercase">Layer Conductivity</h4>
-              
-              <div className="form-row">
-                <label>Outer (Al)</label>
-                <input 
-                  className="neumorphic-input"
-                  type="number" step="1"
-                  value={(selectedObject as Sample).outer_material.thermal_conductivity}
-                  onChange={(e) => {
-                    const s = selectedObject as Sample;
-                    const updated = { ...s, outer_material: { ...s.outer_material, thermal_conductivity: parseFloat(e.target.value) } };
-                    setSamples(samples.map(sam => sam.id === updated.id ? updated : sam));
-                  }}
-                />
-              </div>
 
               <div className="form-row">
-                <label>Middle (PVC)</label>
+                <label>Plastic Thickness <span className="text-xs text-gray-400">(in)</span></label>
                 <input 
                   className="neumorphic-input"
                   type="number" step="0.01"
-                  value={(selectedObject as Sample).middle_material.thermal_conductivity}
+                  value={(selectedObject as Sample).middle_thickness_in}
                   onChange={(e) => {
-                    const s = selectedObject as Sample;
-                    const updated = { ...s, middle_material: { ...s.middle_material, thermal_conductivity: parseFloat(e.target.value) } };
-                    setSamples(samples.map(sam => sam.id === updated.id ? updated : sam));
+                    const updated = { ...(selectedObject as Sample), middle_thickness_in: parseFloat(e.target.value) };
+                    setSamples(samples.map(s => s.id === updated.id ? updated : s));
                   }}
                 />
               </div>
 
               <div className="form-row">
-                <label>Core (Water)</label>
+                <label>Water Mass <span className="text-xs text-gray-400">(lbs)</span></label>
                 <input 
                   className="neumorphic-input"
                   type="number" step="0.1"
-                  value={(selectedObject as Sample).core_material.thermal_conductivity}
+                  value={(selectedObject as Sample).water_mass_lbs}
                   onChange={(e) => {
-                    const s = selectedObject as Sample;
-                    const updated = { ...s, core_material: { ...s.core_material, thermal_conductivity: parseFloat(e.target.value) } };
-                    setSamples(samples.map(sam => sam.id === updated.id ? updated : sam));
+                    const updated = { ...(selectedObject as Sample), water_mass_lbs: parseFloat(e.target.value) };
+                    setSamples(samples.map(s => s.id === updated.id ? updated : s));
                   }}
                 />
               </div>
@@ -416,14 +469,13 @@ const App: React.FC = () => {
           >
             <Icons.Ruler />
           </button>
-          {/* Removed Add Button as requested */}
 
           <div className="toolbar-divider" />
 
           <div className="flex items-center gap-2">
             <select 
               className="neumorphic-input small-input" 
-              style={{ width: '120px' }} // Widened dropdown
+              style={{ width: '120px' }} 
               value={autoLayoutCount}
               onChange={(e) => setAutoLayoutCount(parseInt(e.target.value))}
             >
@@ -448,12 +500,8 @@ const App: React.FC = () => {
           </button>
           <button 
             className="neumorphic-btn small-btn"
-            onClick={() => {
-              setIsRunning(false);
-              setSamples(samples.map(s => ({ ...s, temperature: s.initial_temperature })));
-              setGraphData([]);
-              timeRef.current = 0;
-            }}
+            onClick={handleReset}
+            title="Reset Simulation & Clear Samples"
           >
             <Icons.Reset />
           </button>
