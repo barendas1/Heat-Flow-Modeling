@@ -1,4 +1,5 @@
 import { Sample, Container } from '../types';
+import { PIXELS_PER_INCH } from '../const';
 
 export class InterferenceCalculator {
   // Calculate thermal interference between samples
@@ -17,10 +18,13 @@ export class InterferenceCalculator {
     // For Phenolic Foam (k=0.03), this is small (~20px)
     // For Water (k=0.6), this is large (~100px)
     
-    const criticalDist = 50 * (k / 0.03); // Baseline 50px for foam
+    // UPDATE: Increased sensitivity base from 50 to 150 to match visual "heat halo"
+    // Even with foam, heat spreads significantly over 20 mins
+    const criticalDist = 150 * (Math.max(0.1, k) / 0.03); 
     
     if (edgeDist > criticalDist) return 0;
     
+    // Linear falloff for now, could be exponential
     return Math.min(100, (1 - edgeDist / criticalDist) * 100);
   }
 
@@ -30,7 +34,8 @@ export class InterferenceCalculator {
     for (let i = 0; i < samples.length; i++) {
       for (let j = i + 1; j < samples.length; j++) {
         const score = this.calculateInterference(samples[i], samples[j], container);
-        if (score > 5) {
+        // Lowered threshold from 5% to 1% to catch early interference
+        if (score > 1) {
           report.push(`${samples[i].name} ↔ ${samples[j].name}: ${score.toFixed(1)}% Interference`);
         }
       }
