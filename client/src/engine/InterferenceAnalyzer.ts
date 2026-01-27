@@ -23,7 +23,12 @@ export class InterferenceCalculator {
     // Thermal Diffusion Length ~ 2 * sqrt(alpha * t)
     // Convert to pixels (1 meter approx 39.37 inches * PIXELS_PER_INCH)
     const metersToPixels = 39.37 * PIXELS_PER_INCH;
-    const diffusionLengthMeters = 2 * Math.sqrt(alpha * Math.max(1, elapsedTime));
+    
+    // INCREASED SENSITIVITY:
+    // We multiply the diffusion length by 3.0 (instead of 2.0) to account for the visual "halo"
+    // which extends further than the strict 1/e decay point.
+    // This ensures we catch interference as soon as the visual colors touch.
+    const diffusionLengthMeters = 3.0 * Math.sqrt(alpha * Math.max(1, elapsedTime));
     const diffusionLengthPixels = diffusionLengthMeters * metersToPixels;
 
     // The "Heat Halo" radius is effectively the diffusion length
@@ -47,7 +52,8 @@ export class InterferenceCalculator {
     for (let i = 0; i < samples.length; i++) {
       for (let j = i + 1; j < samples.length; j++) {
         const score = this.calculateInterference(samples[i], samples[j], container, elapsedTime);
-        if (score > 0.1) { // Report even tiny interference > 0.1%
+        // Report even tiny interference > 0.1% to ensure early detection
+        if (score > 0.1) { 
           report.push(`${samples[i].name} ↔ ${samples[j].name}: ${score.toFixed(1)}%`);
           maxInterference = Math.max(maxInterference, score);
         }

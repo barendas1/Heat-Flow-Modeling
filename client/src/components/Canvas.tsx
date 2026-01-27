@@ -222,9 +222,15 @@ export const Canvas: React.FC<CanvasProps> = ({
         ctx.fillStyle = '#4A90E2';
         ctx.fill();
       }
+
+      // Always Draw Name Label
+      ctx.font = 'bold 14px Inter';
+      ctx.fillStyle = '#000';
+      ctx.textAlign = 'center';
+      ctx.fillText(sample.name, sample.x, sample.y - sample.radius - 15);
     });
 
-    // 7. Draw Measurements
+    // 7. Draw Measurements (Ruler Tool)
     if (showMeasurements) {
       ctx.font = '14px Inter';
       ctx.lineWidth = 1;
@@ -250,12 +256,6 @@ export const Canvas: React.FC<CanvasProps> = ({
 
       // Sample Measurements
       samples.forEach((s, i) => {
-        // Name Label
-        ctx.font = 'bold 14px Inter';
-        ctx.fillStyle = '#000';
-        ctx.textAlign = 'center';
-        ctx.fillText(s.name, s.x, s.y - s.radius - 15);
-        
         ctx.font = '12px Inter';
         ctx.strokeStyle = 'rgba(0,0,0,0.5)';
         ctx.setLineDash([4, 4]);
