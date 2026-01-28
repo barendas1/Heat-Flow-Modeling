@@ -95,15 +95,13 @@ export class InterferenceCalculator {
     // Calculate overlap amount
     const overlapAmount = totalHaloReach - edgeDist;
     
-    // Use the average halo size as the reference for percentage calculation
-    // This provides a more balanced and gradual progression
-    const avgHaloSize = (halo1 + halo2) / 2;
-    
-    // Interference percentage represents how much overlap exists relative to average halo size
-    // Just touching (small overlap) = low %
-    // Moderate overlap = medium %
-    // Heavy overlap (halos nearly merged) = high %
-    const interferencePercentage = (overlapAmount / avgHaloSize) * 100;
+    // Interference percentage = what fraction of the total possible overlap has occurred
+    // totalHaloReach is the maximum possible overlap (when samples touch)
+    // This ensures percentage can never exceed 100%
+    // Small overlap (just touching) → low %
+    // Moderate overlap (halos merging) → medium %
+    // Complete overlap (samples touching) → 100%
+    const interferencePercentage = (overlapAmount / totalHaloReach) * 100;
     
     return Math.min(100, Math.max(0, interferencePercentage))
   }
