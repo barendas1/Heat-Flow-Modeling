@@ -231,7 +231,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     ctx.restore(); // END MASK
 
     // 5. Draw Container Border
-    ctx.strokeStyle = selectedId === 'container' ? '#f8a24b' : '#3f4492';
+    ctx.strokeStyle = selectedId === 'container' ? '#9a4d00' : '#3f4492';
     ctx.lineWidth = 3;
     ctx.beginPath();
     if (container.shape === 'circle') {
