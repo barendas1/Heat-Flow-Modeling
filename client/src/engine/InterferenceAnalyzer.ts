@@ -44,66 +44,69 @@ export class InterferenceCalculator {
       return ambientTemp;
     };
     
-    // Calculate heat halo radius for each sample
-    // Halo radius = distance from sample center where temp drops to ambient + threshold
-    const calculateHaloRadius = (sample: Sample): number => {
-      const sampleRim = sample.radius + (1 * PIXELS_PER_INCH);
-      let maxHaloRadius = 0;
+    // NEW APPROACH: Sample temperatures along the line between samples
+    // Calculate interference based on average temperature elevation in the gap
+    // This gives gradual increase as heat spreads
+    
+    // Sample points along the line between the two sample rims
+    const numSamples = 20;
+    let totalTempElevation = 0;
+    let samplesAboveThreshold = 0;
+    
+    // Vector from s1 to s2
+    const dx = s2.x - s1.x;
+    const dy = s2.y - s1.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const unitX = dx / distance;
+    const unitY = dy / distance;
+    
+    // Start sampling from edge of s1's rim to edge of s2's rim
+    const startDist = rim1;
+    const endDist = distance - rim2;
+    const gapDistance = endDist - startDist;
+    
+    if (gapDistance <= 0) {
+      // Samples are touching or overlapping
+      return 100;
+    }
+    
+    // Sample temperatures in the gap between the rims
+    for (let i = 0; i <= numSamples; i++) {
+      const t = i / numSamples;
+      const dist = startDist + t * gapDistance;
+      const x = s1.x + unitX * dist;
+      const y = s1.y + unitY * dist;
+      const temp = getTempAt(x, y);
+      const elevation = temp - ambientTemp;
       
-      // Check in 8 directions from sample center
-      const directions = 8;
-      for (let i = 0; i < directions; i++) {
-        const angle = (i / directions) * Math.PI * 2;
-        const dx = Math.cos(angle);
-        const dy = Math.sin(angle);
-        
-        // Start from rim edge and move outward
-        let distance = sampleRim;
-        const maxDistance = Math.min(canvasWidth, canvasHeight) / 2; // Don't check beyond half canvas
-        
-        while (distance < maxDistance) {
-          const x = sample.x + dx * distance;
-          const y = sample.y + dy * distance;
-          const temp = getTempAt(x, y);
-          
-          // If temperature has dropped to near ambient, this is the halo edge
-          if (temp - ambientTemp < threshold) {
-            maxHaloRadius = Math.max(maxHaloRadius, distance - sampleRim);
-            break;
-          }
-          
-          distance += 5; // Check every 5 pixels
-        }
+      if (elevation > threshold) {
+        samplesAboveThreshold++;
+        totalTempElevation += elevation;
       }
-      
-      return maxHaloRadius;
-    };
+    }
     
-    // Get halo radii for both samples
-    const halo1 = calculateHaloRadius(s1);
-    const halo2 = calculateHaloRadius(s2);
-    
-    // Check if halos overlap
-    // Halos overlap when: distance_between_rims < (halo1_radius + halo2_radius)
-    const totalHaloReach = halo1 + halo2;
-    
-    if (edgeDist >= totalHaloReach) {
-      // No overlap - no interference
+    // If no samples are above threshold, no interference
+    if (samplesAboveThreshold === 0) {
       return 0;
     }
     
-    // Calculate overlap amount
-    const overlapAmount = totalHaloReach - edgeDist;
+    // Calculate average temperature elevation in the gap
+    const avgElevation = totalTempElevation / samplesAboveThreshold;
     
-    // FIXED GRADUAL FORMULA:
-    // Calculate interference as a percentage of the total possible halo reach.
-    // This provides a smooth, gradual increase from 0% to 100%.
-    // 
-    // When halos just start to touch: small overlap / large total reach = low %
-    // As halos grow and overlap more: larger overlap / total reach = medium %
-    // When halos deeply overlap: large overlap / total reach = high %
-    // When samples touch physically: returns 100% (handled above)
-    const interferencePercentage = (overlapAmount / totalHaloReach) * 100;
+    // Define a reference temperature for "significant" interference
+    // This should be calibrated based on your application
+    // For example, 10°F above ambient = significant interference
+    const significantTempRise = 10.0; // °F
+    
+    // Calculate interference percentage based on:
+    // 1. How many sample points show heat (coverage)
+    // 2. How hot those points are (intensity)
+    const coveragePercent = (samplesAboveThreshold / (numSamples + 1)) * 100;
+    const intensityPercent = Math.min(100, (avgElevation / significantTempRise) * 100);
+    
+    // Combine coverage and intensity (weighted average)
+    // Coverage is more important early on, intensity matters more later
+    const interferencePercentage = (coveragePercent * 0.6) + (intensityPercent * 0.4);
     
     return Math.min(100, Math.max(0, interferencePercentage))
   }
