@@ -17,7 +17,7 @@ export class InterferenceCalculator {
     if (!gridData || gridData.length === 0) return 0;
     
     const ambientTemp = container.ambient_temperature;
-    const threshold = 3.0; // °F - minimum elevation to consider as "heat halo" (more conservative detection)
+    const threshold = 8.0; // °F - minimum elevation to consider as "heat halo" (very conservative - only detect significant heat)
     
     const gridH = gridData.length;
     const gridW = gridData[0].length;
@@ -96,7 +96,7 @@ export class InterferenceCalculator {
     // Define a reference temperature for "significant" interference
     // This should be calibrated based on your application
     // Higher value = more conservative (reaches 100% at higher temps)
-    const significantTempRise = 20.0; // °F
+    const significantTempRise = 35.0; // °F
     
     // Calculate interference percentage based on:
     // 1. How many sample points show heat (coverage)
@@ -108,6 +108,12 @@ export class InterferenceCalculator {
     // Use multiplication instead of weighted average for more conservative results
     // Both coverage AND intensity must be high for high interference
     const interferencePercentage = Math.sqrt(coveragePercent * intensityPercent);
+    
+    // Additional filter: require at least 30% coverage before reporting any interference
+    // This prevents premature detection when halos are just barely starting to form
+    if (coveragePercent < 30) {
+      return 0;
+    }
     
     return Math.min(100, Math.max(0, interferencePercentage))
   }
