@@ -41,11 +41,14 @@ const App: React.FC = () => {
   const [autoLayoutCount, setAutoLayoutCount] = useState(4);
   const [simSpeed, setSimSpeed] = useState(1); // 1x to 2400x
   const [zoom, setZoom] = useState(1);
+  const [autoZoom, setAutoZoom] = useState(true); // Auto-adjust zoom for large containers
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [elapsedTime, setElapsedTime] = useState(0);
   const [layoutWarning, setLayoutWarning] = useState<string | null>(null);
+  const [simulationComplete, setSimulationComplete] = useState(false);
+  const [convergenceData, setConvergenceData] = useState<{[key: string]: number}>({});
   
   const physicsRef = useRef(new GridPhysicsEngine());
   const [gridData, setGridData] = useState<number[][] | null>(null);
@@ -63,6 +66,35 @@ const App: React.FC = () => {
   useEffect(() => {
     physicsRef.current.initialize(container, samples, window.innerWidth - 600, window.innerHeight);
   }, [container, samples.length]);
+
+  // Auto-adjust zoom to fit container in viewport
+  useEffect(() => {
+    if (!autoZoom) return;
+    
+    const canvasWidth = window.innerWidth - 600; // Account for sidebars
+    const canvasHeight = window.innerHeight;
+    
+    // Add padding (10% margin on each side)
+    const availableWidth = canvasWidth * 0.8;
+    const availableHeight = canvasHeight * 0.8;
+    
+    // Calculate required zoom to fit container
+    let requiredZoom = 1;
+    if (container.shape === 'circle') {
+      const requiredZoomW = availableWidth / container.width;
+      const requiredZoomH = availableHeight / container.width;
+      requiredZoom = Math.min(requiredZoomW, requiredZoomH);
+    } else {
+      const requiredZoomW = availableWidth / container.width;
+      const requiredZoomH = availableHeight / container.height;
+      requiredZoom = Math.min(requiredZoomW, requiredZoomH);
+    }
+    
+    // Only adjust if container is too large (zoom < 1) or significantly smaller (zoom > 1.5)
+    if (requiredZoom < 1 || requiredZoom > 1.5) {
+      setZoom(Math.max(0.1, Math.min(3, requiredZoom)));
+    }
+  }, [container.width, container.height, container.shape, autoZoom]);
 
   // Simulation Loop
   useEffect(() => {
@@ -124,6 +156,24 @@ const App: React.FC = () => {
           
           // Update UI values
           setSamples(updatedSamples);
+          
+          // Check convergence: All samples within ±1°F of ambient
+          const tolerance = 1.0; // ±1°F
+          const allConverged = updatedSamples.every(s => 
+            Math.abs(s.temperature - container.ambient_temperature) <= tolerance
+          );
+          
+          if (allConverged && updatedSamples.length > 0 && !simulationComplete) {
+            setIsRunning(false);
+            setSimulationComplete(true);
+            
+            // Record convergence times for each sample
+            const convergenceTimes: {[key: string]: number} = {};
+            updatedSamples.forEach(s => {
+              convergenceTimes[s.name] = timeRef.current;
+            });
+            setConvergenceData(convergenceTimes);
+          }
         }
         
         animationRef.current = requestAnimationFrame(loop);
@@ -339,6 +389,8 @@ const App: React.FC = () => {
     setElapsedTime(0);
     setGridData(null); 
     setLayoutWarning(null);
+    setSimulationComplete(false);
+    setConvergenceData({});
     setTimeout(() => {
         physicsRef.current.initialize(container, [], window.innerWidth - 600, window.innerHeight);
     }, 0);
@@ -378,7 +430,14 @@ const App: React.FC = () => {
   };
 
   const selectedObject = selectedId === 'container' ? container : samples.find(s => s.id === selectedId);
-  const interferenceReport = InterferenceCalculator.getInterferenceReport(samples, container, elapsedTime);
+  const interferenceReport = InterferenceCalculator.getInterferenceReport(
+    samples, 
+    container, 
+    elapsedTime, 
+    gridData,
+    window.innerWidth - 600,
+    window.innerHeight
+  );
 
   return (
     <div className="app-container">
@@ -442,18 +501,16 @@ const App: React.FC = () => {
               </select>
             </div>
 
-            {/* Water Temperature Field */}
-            {container.fill_type === 'Water' && (
-              <div className="form-row animate-fade-in">
-                <label>Water Temp (°F)</label>
-                <input 
-                  type="number" 
-                  className="neumorphic-input"
-                  value={container.ambient_temperature}
-                  onChange={(e) => setContainer({ ...container, ambient_temperature: Number(e.target.value) })}
-                />
-              </div>
-            )}
+            {/* Ambient Temperature Field - Always Visible */}
+            <div className="form-row">
+              <label>Ambient Temp (°F)</label>
+              <input 
+                type="number" 
+                className="neumorphic-input"
+                value={container.ambient_temperature}
+                onChange={(e) => setContainer({ ...container, ambient_temperature: Number(e.target.value) })}
+              />
+            </div>
 
             <div className="property-details mt-4">
                <div className="form-row">
@@ -664,8 +721,9 @@ const App: React.FC = () => {
 
         <div className="canvas-wrapper" style={{ overflow: 'visible', position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div className="zoom-controls absolute bottom-4 right-4 flex gap-2 z-10">
-             <button className="tool-btn bg-white" onClick={(e) => { e.stopPropagation(); setZoom(z => Math.min(3, z + 0.1)); }}><Icons.ZoomIn /></button>
-             <button className="tool-btn bg-white" onClick={(e) => { e.stopPropagation(); setZoom(z => Math.max(0.5, z - 0.1)); }}><Icons.ZoomOut /></button>
+             <button className="tool-btn bg-white" onClick={(e) => { e.stopPropagation(); setAutoZoom(false); setZoom(z => Math.min(3, z + 0.1)); }}><Icons.ZoomIn /></button>
+             <button className="tool-btn bg-white" onClick={(e) => { e.stopPropagation(); setAutoZoom(false); setZoom(z => Math.max(0.1, z - 0.1)); }}><Icons.ZoomOut /></button>
+             <button className="tool-btn bg-white" onClick={(e) => { e.stopPropagation(); setAutoZoom(true); }} title="Reset Zoom">⟲</button>
           </div>
           
           <div style={{ transform: `scale(${zoom}) translate(${pan.x}px, ${pan.y}px)`, transformOrigin: 'center center', transition: 'transform 0.1s' }}>
@@ -692,20 +750,51 @@ const App: React.FC = () => {
       <div className="sidebar sidebar-right neumorphic-panel">
         <h2 className="section-title">Analysis</h2>
         
-        <div className="chart-container" style={{ height: '250px' }}>
+        {/* Simulation Completion Report */}
+        {simulationComplete && (
+          <div className="completion-report mb-4 p-4 bg-green-50 border-2 border-green-500 rounded-lg">
+            <h3 className="text-lg font-bold text-green-800 mb-3 flex items-center gap-2">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+              </svg>
+              Simulation Complete!
+            </h3>
+            <div className="text-sm space-y-2">
+              <div className="font-bold">Total Elapsed Time: {Math.round(elapsedTime)} seconds ({(elapsedTime / 60).toFixed(1)} min)</div>
+              <div className="font-bold mt-3 mb-1">Final Temperatures:</div>
+              {samples.map(s => (
+                <div key={s.id} className="ml-2">{s.name}: {s.temperature.toFixed(1)}°F</div>
+              ))}
+              <div className="font-bold mt-3 mb-1">Convergence Times:</div>
+              {Object.entries(convergenceData).map(([name, time]) => (
+                <div key={name} className="ml-2">{name}: {Math.round(time)}s ({(time / 60).toFixed(1)} min)</div>
+              ))}
+              <div className="font-bold mt-3 mb-1">Thermal Interference:</div>
+              {interferenceReport.map((line: string, i: number) => (
+                <div key={i} className={`ml-2 ${line.includes('No significant') || line.includes('not started') ? 'text-green-700' : 'text-red-700'}`}>
+                  {line}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        <div className="chart-container" style={{ height: simulationComplete ? '400px' : '250px' }}>
           <TemperatureGraph data={graphData} />
         </div>
 
-        <div className="interference-report mt-4">
-          <h3 className="text-sm font-bold text-gray-700 mb-2">Interference Report</h3>
-          <div className="report-list">
-            {interferenceReport.map((line: string, i: number) => (
-              <div key={i} className={`report-item ${line.includes('No significant') || line.includes('not started') ? 'text-green-600' : 'text-red-600'}`}>
-                {line}
-              </div>
-            ))}
+        {!simulationComplete && (
+          <div className="interference-report mt-4">
+            <h3 className="text-sm font-bold text-gray-700 mb-2">Interference Report</h3>
+            <div className="report-list">
+              {interferenceReport.map((line: string, i: number) => (
+                <div key={i} className={`report-item ${line.includes('No significant') || line.includes('not started') ? 'text-green-600' : 'text-red-600'}`}>
+                  {line}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
