@@ -92,14 +92,18 @@ export class InterferenceCalculator {
       return 0;
     }
     
-    // Calculate what percentage of Sample 1's halo is intruded upon by Sample 2's heat
-    // overlapAmount = how much the halos overlap in the space between them
+    // Calculate overlap amount
     const overlapAmount = totalHaloReach - edgeDist;
     
-    // The interference percentage represents how much of s1's halo territory
-    // is being invaded by s2's heat
-    // If s1's halo extends 100px and s2's heat reaches 25px into it, that's 25%
-    const interferencePercentage = (overlapAmount / halo1) * 100;
+    // Use the average halo size as the reference for percentage calculation
+    // This provides a more balanced and gradual progression
+    const avgHaloSize = (halo1 + halo2) / 2;
+    
+    // Interference percentage represents how much overlap exists relative to average halo size
+    // Just touching (small overlap) = low %
+    // Moderate overlap = medium %
+    // Heavy overlap (halos nearly merged) = high %
+    const interferencePercentage = (overlapAmount / avgHaloSize) * 100;
     
     return Math.min(100, Math.max(0, interferencePercentage))
   }
