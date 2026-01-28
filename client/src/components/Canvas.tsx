@@ -80,7 +80,6 @@ export const Canvas: React.FC<CanvasProps> = ({
     const cy = canvas.height / 2;
 
     // 2. Prepare Offscreen Buffer for Heatmap
-    // This ensures we can draw the full heatmap and then "stamp" it only where the container is
     const buffer = document.createElement('canvas');
     buffer.width = canvas.width;
     buffer.height = canvas.height;
@@ -95,7 +94,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     } else {
       ctx.rect(cx - container.width / 2, cy - container.height / 2, container.width, container.height);
     }
-    ctx.clip(); // STRICT MASK: Nothing draws outside this path
+    ctx.clip(); // STRICT MASK
 
     // 4. Draw Content Inside Mask
     if (showHeatmap && gridData) {
@@ -111,7 +110,6 @@ export const Canvas: React.FC<CanvasProps> = ({
       const gridH = gridData.length;
       const gridW = gridData[0].length;
       
-      // Optimization: Only iterate pixels inside the container bounding box
       const startX = Math.max(0, Math.floor(cx - container.width / 2));
       const endX = Math.min(width, Math.ceil(cx + container.width / 2));
       const startY = Math.max(0, Math.floor(cy - container.height / 2));
@@ -136,8 +134,6 @@ export const Canvas: React.FC<CanvasProps> = ({
         }
       }
       bCtx.putImageData(imageData, 0, 0);
-      
-      // Draw Buffer to Main Canvas (Mask applies here)
       ctx.drawImage(buffer, 0, 0);
 
       // Draw Isotherms
@@ -145,7 +141,6 @@ export const Canvas: React.FC<CanvasProps> = ({
       const cellW = width / gridW;
       const cellH = height / gridH;
       
-      // Only draw isotherms inside bounding box
       const startGX = Math.floor((startX / width) * gridW);
       const endGX = Math.ceil((endX / width) * gridW);
       const startGY = Math.floor((startY / height) * gridH);
@@ -170,13 +165,12 @@ export const Canvas: React.FC<CanvasProps> = ({
         }
       }
     } else {
-      // Static Material Color (Blue/Yellow)
       ctx.fillStyle = container.fill_type === 'Water' ? '#E6F3FF' : '#FFF8E1';
       ctx.fill();
     }
     ctx.restore(); // END MASK
 
-    // 5. Draw Container Border (On top of mask)
+    // 5. Draw Container Border
     ctx.strokeStyle = selectedId === 'container' ? '#f8a24b' : '#3f4492';
     ctx.lineWidth = 3;
     ctx.beginPath();
@@ -191,10 +185,22 @@ export const Canvas: React.FC<CanvasProps> = ({
     samples.forEach(sample => {
       const isSelected = selectedId === sample.id;
       
-      // Calculate Visual Radii based on Thickness
+      // Calculate Visual Radii
       const outerRadius = sample.radius;
       const middleRadius = outerRadius - (sample.outer_thickness_in * PIXELS_PER_INCH);
       const coreRadius = middleRadius - (sample.middle_thickness_in * PIXELS_PER_INCH);
+      
+      // RIM: 1 inch extra radius (2 inches extra diameter)
+      const rimRadius = outerRadius + (1 * PIXELS_PER_INCH);
+
+      // Draw Rim (Hanging Lip)
+      ctx.beginPath();
+      ctx.arc(sample.x, sample.y, rimRadius, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(200, 200, 200, 0.5)'; // Semi-transparent gray for rim
+      ctx.fill();
+      ctx.strokeStyle = '#888';
+      ctx.lineWidth = 1;
+      ctx.stroke();
 
       // Outer
       ctx.beginPath();
@@ -227,10 +233,10 @@ export const Canvas: React.FC<CanvasProps> = ({
       ctx.font = 'bold 14px Inter';
       ctx.fillStyle = '#000';
       ctx.textAlign = 'center';
-      ctx.fillText(sample.name, sample.x, sample.y - sample.radius - 15);
+      ctx.fillText(sample.name, sample.x, sample.y - rimRadius - 15);
     });
 
-    // 7. Draw Measurements (Ruler Tool)
+    // 7. Draw Measurements
     if (showMeasurements) {
       ctx.font = '14px Inter';
       ctx.lineWidth = 1;
@@ -259,6 +265,11 @@ export const Canvas: React.FC<CanvasProps> = ({
         ctx.font = '12px Inter';
         ctx.strokeStyle = 'rgba(0,0,0,0.5)';
         ctx.setLineDash([4, 4]);
+        
+        // Show Sample Diameter (including Rim)
+        // Rim adds 1 inch to radius -> 2 inches to diameter
+        const totalDiameter = (s.radius * 2 / PIXELS_PER_INCH) + 2;
+        drawLabel(s.x, s.y, `Ø ${totalDiameter.toFixed(1)}"`);
 
         // Distance to Walls
         if (container.shape === 'rectangle') {
@@ -306,7 +317,6 @@ export const Canvas: React.FC<CanvasProps> = ({
           const dy = other.y - s.y;
           const dist = Math.sqrt(dx*dx + dy*dy);
           
-          // Only draw if close enough to be relevant (< 10 inches)
           if (dist < 10 * PIXELS_PER_INCH) {
              ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(other.x, other.y); ctx.stroke();
              drawLabel((s.x + other.x)/2, (s.y + other.y)/2, `${(dist/PIXELS_PER_INCH).toFixed(1)}"`);
@@ -330,7 +340,9 @@ export const Canvas: React.FC<CanvasProps> = ({
     const clickedSample = samples.find(s => {
       const dx = s.x - x;
       const dy = s.y - y;
-      return Math.sqrt(dx*dx + dy*dy) <= s.radius;
+      // Allow clicking on the rim too
+      const rimRadius = s.radius + (1 * PIXELS_PER_INCH);
+      return Math.sqrt(dx*dx + dy*dy) <= rimRadius;
     });
 
     if (clickedSample) {
@@ -370,7 +382,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     <>
     <canvas
       ref={canvasRef}
-      width={window.innerWidth - 600} // Adjusted for 2 sidebars (300px each)
+      width={window.innerWidth - 600} 
       height={window.innerHeight}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}

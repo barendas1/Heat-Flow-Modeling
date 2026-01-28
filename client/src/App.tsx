@@ -39,12 +39,13 @@ const App: React.FC = () => {
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [showMeasurements, setShowMeasurements] = useState(true);
   const [autoLayoutCount, setAutoLayoutCount] = useState(4);
-  const [simSpeed, setSimSpeed] = useState(1); // 1x, 5x, 10x, 20x
+  const [simSpeed, setSimSpeed] = useState(1); // 1x to 2400x
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [layoutWarning, setLayoutWarning] = useState<string | null>(null);
   
   const physicsRef = useRef(new GridPhysicsEngine());
   const [gridData, setGridData] = useState<number[][] | null>(null);
@@ -68,10 +69,27 @@ const App: React.FC = () => {
     if (isRunning) {
       let frameCount = 0;
       const loop = () => {
-        // Run multiple physics steps per frame based on speed
-        for (let i = 0; i < simSpeed; i++) {
+        // Adaptive Time Step for High Speed
+        // Base step is 0.05s
+        // At 2400x, we need 120s per frame (assuming 60fps is too slow, we do multiple steps)
+        // We can increase dt per step to reduce loop count
+        
+        let steps = simSpeed;
+        let dt = 0.05;
+        
+        // Optimization for high speeds: Increase dt, decrease steps
+        if (simSpeed > 100) {
+           dt = 0.5; // 10x larger step
+           steps = simSpeed / 10;
+        }
+        if (simSpeed > 1000) {
+           dt = 2.0; // 40x larger step
+           steps = simSpeed / 40;
+        }
+
+        for (let i = 0; i < steps; i++) {
           physicsRef.current.step();
-          timeRef.current += 0.05; // 0.05s per tick
+          timeRef.current += dt;
         }
         
         setElapsedTime(timeRef.current);
@@ -159,7 +177,7 @@ const App: React.FC = () => {
   };
 
   const handleAutoLayout = (count: number) => {
-    // Safety check to prevent crash
+    setLayoutWarning(null); // Reset warning
     if (count <= 0) return;
 
     const cx = (window.innerWidth - 600) / 2;
@@ -169,35 +187,56 @@ const App: React.FC = () => {
     
     const sampleRadius = (4 * PIXELS_PER_INCH) / 2; // Default 4" diameter
     const sampleDiameter = sampleRadius * 2;
+    
+    // 1. Margin from Edge of Sample (not center)
+    // User requested 4 inches from sample edge
+    const edgeMargin = 4 * PIXELS_PER_INCH;
+    
+    // Total margin from wall to center = edgeMargin + radius
+    const centerMargin = edgeMargin + sampleRadius;
 
     if (container.shape === 'circle') {
       // Circular Layout
-      const r = Math.min(container.width, container.height) / 3;
+      // Ensure we fit within radius - centerMargin
+      const maxR = (container.width / 2) - centerMargin;
+      
+      if (maxR <= 0) {
+         setLayoutWarning("Container too small for 4-inch edge clearance.");
+         return;
+      }
+
+      const r = maxR * 0.8; // Use 80% of available space to be safe
+      
+      // Check circumference spacing
+      const circumference = 2 * Math.PI * r;
+      const requiredArc = count * (sampleDiameter + 2 * PIXELS_PER_INCH); // Diameter + 2" gap
+      
+      if (requiredArc > circumference) {
+         setLayoutWarning("Warning: Samples may be too close for accurate thermal isolation.");
+      }
+
       for (let i = 0; i < count; i++) {
         const angle = (i / count) * Math.PI * 2;
         newSamples.push(createSample(i, cx + Math.cos(angle) * r, cy + Math.sin(angle) * r, materials));
       }
     } else {
-      // Best-Fit Optimizer for Rectangles
-      // We want to maximize the minimum distance between any two wells (and walls)
-      // We try different grid configurations (rows x cols) and pick the best one
+      // Rectangular Layout
+      const availW = container.width - centerMargin * 2;
+      const availH = container.height - centerMargin * 2;
       
-      // STRICT MARGIN: At least one full diameter (4 inches) from the wall
-      const margin = sampleDiameter; 
-      const availW = container.width - margin * 2;
-      const availH = container.height - margin * 2;
+      if (availW <= 0 || availH <= 0) {
+         setLayoutWarning("Container too small for 4-inch edge clearance.");
+         return;
+      }
       
       let bestLayout = { rows: 1, cols: count, spacing: 0 };
       
       // Try all factors
       for (let r = 1; r <= count; r++) {
         const c = Math.ceil(count / r);
-        // Calculate theoretical spacing for this grid
         const spaceX = c > 1 ? availW / (c - 1) : 0;
         const spaceY = r > 1 ? availH / (r - 1) : 0;
         
-        // If single row/col, spacing is infinite in that direction, so take the other
-        // If single item, spacing is infinite
         let minSpacing = 0;
         if (count === 1) minSpacing = Infinity;
         else if (r === 1) minSpacing = spaceX;
@@ -207,6 +246,15 @@ const App: React.FC = () => {
         if (minSpacing > bestLayout.spacing) {
           bestLayout = { rows: r, cols: c, spacing: minSpacing };
         }
+      }
+      
+      // Check if spacing is sufficient (e.g., at least 2 inches between edges)
+      // Spacing is center-to-center. 
+      // Gap = Spacing - Diameter
+      // We want Gap >= 2 inches
+      const minGap = bestLayout.spacing - sampleDiameter;
+      if (count > 1 && minGap < 2 * PIXELS_PER_INCH) {
+         setLayoutWarning("Warning: High packing density detected. Thermal interference likely.");
       }
       
       // Apply Best Layout
@@ -224,11 +272,9 @@ const App: React.FC = () => {
         let x = startX + col * cellW;
         let y = startY + row * cellH;
         
-        // Center single items
         if (cols === 1) x = cx;
         if (rows === 1) y = cy;
         
-        // Center the last row if incomplete
         if (row === rows - 1 && count % cols !== 0) {
            const itemsInLastRow = count % cols;
            const rowWidth = (itemsInLastRow - 1) * cellW;
@@ -241,7 +287,6 @@ const App: React.FC = () => {
     }
     
     setSamples(newSamples);
-    // Re-init physics immediately to prevent crash on next render
     physicsRef.current.initialize(container, newSamples, window.innerWidth - 600, window.innerHeight);
   };
 
@@ -268,12 +313,12 @@ const App: React.FC = () => {
 
   const handleReset = () => {
     setIsRunning(false);
-    setSamples([]); // Clear all samples
-    setGraphData([]); // Clear analytics
+    setSamples([]); 
+    setGraphData([]); 
     timeRef.current = 0;
     setElapsedTime(0);
-    setGridData(null); // Clear heatmap
-    // Re-init physics safely
+    setGridData(null); 
+    setLayoutWarning(null);
     setTimeout(() => {
         physicsRef.current.initialize(container, [], window.innerWidth - 600, window.innerHeight);
     }, 0);
@@ -282,7 +327,7 @@ const App: React.FC = () => {
   const updateSampleSize = (sample: Sample, newSize: SampleSize) => {
     const diameter = newSize === '2x4' ? 2 : 4;
     const radius = (diameter * PIXELS_PER_INCH) / 2;
-    const defaultMass = newSize === '2x4' ? 0.8 : 3.5; // Approx mass for water in that volume
+    const defaultMass = newSize === '2x4' ? 0.8 : 3.5; 
 
     const updated = { 
       ...sample, 
@@ -360,8 +405,6 @@ const App: React.FC = () => {
                 />
               </div>
             )}
-
-            {/* Depth Removed as requested */}
 
             <div className="form-row">
               <label>Fill Material</label>
@@ -498,7 +541,6 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Legend Moved Here */}
         <div className="legend mt-auto p-3 bg-gray-50 rounded-lg border border-gray-200">
           <h4 className="text-xs font-bold mb-2">Temperature Map</h4>
           <div className="gradient-bar h-4 w-full rounded mb-1" style={{ background: 'linear-gradient(to right, #30123b, #4686fa, #1ae4b6, #a9f759, #fbb41a, #e64616, #7a0403)' }}></div>
@@ -570,14 +612,22 @@ const App: React.FC = () => {
           <div className="speed-control flex items-center gap-2">
             <span className="text-xs font-bold text-gray-600">Speed:</span>
             <input 
-              type="range" min="1" max="20" step="1" 
+              type="range" min="1" max="2400" step="10" 
               value={simSpeed} 
               onChange={(e) => setSimSpeed(Number(e.target.value))}
               className="w-24"
             />
-            <span className="text-xs w-6">{simSpeed}x</span>
+            <span className="text-xs w-10 text-right">{simSpeed}x</span>
           </div>
         </div>
+
+        {layoutWarning && (
+          <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-20 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 animate-fade-in">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+            <span className="text-sm font-medium">{layoutWarning}</span>
+            <button onClick={() => setLayoutWarning(null)} className="ml-2 text-red-400 hover:text-red-700">×</button>
+          </div>
+        )}
 
         <div className="canvas-wrapper" style={{ overflow: 'visible', position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div className="zoom-controls absolute bottom-4 right-4 flex gap-2 z-10">
@@ -597,7 +647,6 @@ const App: React.FC = () => {
               onContainerUpdate={setContainer}
               onSampleUpdate={(updated) => setSamples(samples.map(s => s.id === updated.id ? updated : s))}
               onSelect={(id) => {
-                // Only select if we didn't drag significantly
                 if (!isDragging) setSelectedId(id);
               }}
               onAddSample={() => {}}
