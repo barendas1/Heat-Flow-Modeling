@@ -95,16 +95,15 @@ export class InterferenceCalculator {
     // Calculate overlap amount
     const overlapAmount = totalHaloReach - edgeDist;
     
-    // NEW GRADUAL FORMULA:
-    // Instead of using totalHaloReach as denominator (which gives high % immediately),
-    // use the DISTANCE BETWEEN SAMPLES as the reference.
-    // This makes interference grow gradually as halos expand toward each other.
+    // FIXED GRADUAL FORMULA:
+    // Calculate interference as a percentage of the total possible halo reach.
+    // This provides a smooth, gradual increase from 0% to 100%.
     // 
-    // When halos are small and just forming: low %
-    // When halos grow and start touching: medium %
-    // When halos deeply overlap: high %
-    // When samples are very close: approaches 100%
-    const interferencePercentage = (overlapAmount / edgeDist) * 50; // Scale by 50 to get reasonable range
+    // When halos just start to touch: small overlap / large total reach = low %
+    // As halos grow and overlap more: larger overlap / total reach = medium %
+    // When halos deeply overlap: large overlap / total reach = high %
+    // When samples touch physically: returns 100% (handled above)
+    const interferencePercentage = (overlapAmount / totalHaloReach) * 100;
     
     return Math.min(100, Math.max(0, interferencePercentage))
   }
