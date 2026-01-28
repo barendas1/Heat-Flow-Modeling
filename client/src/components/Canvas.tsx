@@ -10,6 +10,7 @@ interface CanvasProps {
   selectedId: string | null;
   showHeatmap: boolean;
   gridData: number[][] | null;
+  zoom: number;
   onContainerUpdate: (container: Container) => void;
   onSampleUpdate: (sample: Sample) => void;
   onSelect: (id: string | null) => void;
@@ -24,6 +25,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   showHeatmap,
   showMeasurements,
   gridData,
+  zoom,
   onContainerUpdate,
   onSampleUpdate,
   onSelect,
@@ -38,10 +40,63 @@ export const Canvas: React.FC<CanvasProps> = ({
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
-    return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
+    
+    // The canvas is inside a div with:
+    // - transform: scale(zoom) translate(pan.x, pan.y)
+    // - transformOrigin: center center
+    // This means scaling happens from the center of the wrapper
+    
+    // Get click position relative to canvas
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+    
+    // The rect gives us the SCALED dimensions
+    // To convert back to unscaled canvas coordinates:
+    // 1. Find the center of the scaled canvas
+    const scaledCenterX = rect.width / 2;
+    const scaledCenterY = rect.height / 2;
+    
+    // 2. Get click position relative to scaled center
+    const relativeToScaledCenter = {
+      x: clickX - scaledCenterX,
+      y: clickY - scaledCenterY
     };
+    
+    // 3. Divide by zoom to get unscaled distance from center
+    const relativeToUnscaledCenter = {
+      x: relativeToScaledCenter.x / zoom,
+      y: relativeToScaledCenter.y / zoom
+    };
+    
+    // 4. Add back the unscaled center to get absolute canvas coordinates
+    const actualWidth = window.innerWidth - 600;
+    const actualHeight = window.innerHeight;
+    const unscaledCenterX = actualWidth / 2;
+    const unscaledCenterY = actualHeight / 2;
+    
+    const result = {
+      x: unscaledCenterX + relativeToUnscaledCenter.x,
+      y: unscaledCenterY + relativeToUnscaledCenter.y
+    };
+    
+    // Debug logging
+    if ((window as any).debugNextClick) {
+      console.log('getMousePos:', {
+        clientX: e.clientX,
+        clientY: e.clientY,
+        rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+        clickX, clickY,
+        scaledCenterX, scaledCenterY,
+        relativeToScaledCenter,
+        zoom,
+        relativeToUnscaledCenter,
+        unscaledCenterX, unscaledCenterY,
+        result
+      });
+      (window as any).debugNextClick = false;
+    }
+    
+    return result;
   };
 
   const getTurboColor = (t: number) => {
@@ -364,10 +419,29 @@ export const Canvas: React.FC<CanvasProps> = ({
     const clickedSample = samples.find(s => {
       const dx = s.x - x;
       const dy = s.y - y;
+      const distance = Math.sqrt(dx*dx + dy*dy);
       // Allow clicking on the rim too
       const rimRadius = s.radius + (1 * PIXELS_PER_INCH);
-      return Math.sqrt(dx*dx + dy*dy) <= rimRadius;
+      
+      // Debug logging
+      if ((window as any).debugSampleClick) {
+        console.log(`Sample ${s.name}:`, {
+          samplePos: { x: s.x, y: s.y },
+          clickPos: { x, y },
+          distance,
+          rimRadius,
+          radius: s.radius,
+          isWithin: distance <= rimRadius
+        });
+      }
+      
+      return distance <= rimRadius;
     });
+    
+    if ((window as any).debugSampleClick) {
+      console.log('Clicked sample:', clickedSample?.name || 'none');
+      (window as any).debugSampleClick = false;
+    }
 
     if (clickedSample) {
       onSelect(clickedSample.id);

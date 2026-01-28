@@ -39,6 +39,7 @@ const App: React.FC = () => {
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [showMeasurements, setShowMeasurements] = useState(true);
   const [autoLayoutCount, setAutoLayoutCount] = useState(4);
+  const [defaultSampleSize, setDefaultSampleSize] = useState<SampleSize>('4x8');
   const [simSpeed, setSimSpeed] = useState(1); // 1x to 2400x
   const [zoom, setZoom] = useState(1);
   const [autoZoom, setAutoZoom] = useState(true); // Auto-adjust zoom for large containers
@@ -238,7 +239,9 @@ const App: React.FC = () => {
     const materials = MaterialLibrary.getMaterials();
     const newSamples: Sample[] = [];
     
-    const sampleRadius = (4 * PIXELS_PER_INCH) / 2; // Default 4" diameter
+    // Use selected sample size
+    const diameterInches = defaultSampleSize === '4x8' ? 4 : 2;
+    const sampleRadius = (diameterInches * PIXELS_PER_INCH) / 2;
     const sampleDiameter = sampleRadius * 2;
     
     // 1. Margin from Edge of Sample RIM
@@ -259,7 +262,6 @@ const App: React.FC = () => {
     // And "measured from the sample wells edge".
     // So Distance(Rim Edge to Wall) >= Diameter.
     
-    const diameterInches = 4; // Default 4x8
     const requiredClearance = diameterInches * PIXELS_PER_INCH;
     
     // Rim Radius = Sample Radius + 1 inch
@@ -361,12 +363,13 @@ const App: React.FC = () => {
   };
 
   const createSample = (i: number, x: number, y: number, materials: any): Sample => {
+    const diameterInches = defaultSampleSize === '4x8' ? 4 : 2;
     return {
       id: Math.random().toString(36).substr(2, 9),
       x, y,
-      radius: (4 * PIXELS_PER_INCH) / 2,
+      radius: (diameterInches * PIXELS_PER_INCH) / 2,
       name: `Sample ${i + 1}`,
-      size: '4x8',
+      size: defaultSampleSize,
       outer_material: materials['Aluminum'],
       middle_material: materials['Plastic (PVC)'],
       core_material: materials['Water'],
@@ -556,24 +559,6 @@ const App: React.FC = () => {
         {selectedId && selectedId !== 'container' && (
           <div className="property-group">
             <h3 className="text-sm font-bold text-gray-700 mb-3">Sample: {(selectedObject as Sample)?.name}</h3>
-            
-            <div className="form-row">
-              <label>Size</label>
-              <div className="toggle-group">
-                <button 
-                  className={`toggle-btn ${(selectedObject as Sample).size === '2x4' ? 'active' : ''}`}
-                  onClick={() => updateSampleSize(selectedObject as Sample, '2x4')}
-                >
-                  2" x 4"
-                </button>
-                <button 
-                  className={`toggle-btn ${(selectedObject as Sample).size === '4x8' ? 'active' : ''}`}
-                  onClick={() => updateSampleSize(selectedObject as Sample, '4x8')}
-                >
-                  4" x 8"
-                </button>
-              </div>
-            </div>
 
             <div className="form-row">
               <label>Initial Temp (°F)</label>
@@ -677,6 +662,20 @@ const App: React.FC = () => {
           <div className="divider"></div>
 
           <div className="layout-controls">
+            <div className="toggle-group" style={{ marginBottom: '8px' }}>
+              <button 
+                className={`toggle-btn ${defaultSampleSize === '2x4' ? 'active' : ''}`}
+                onClick={() => setDefaultSampleSize('2x4')}
+              >
+                2" x 4"
+              </button>
+              <button 
+                className={`toggle-btn ${defaultSampleSize === '4x8' ? 'active' : ''}`}
+                onClick={() => setDefaultSampleSize('4x8')}
+              >
+                4" x 8"
+              </button>
+            </div>
             <select 
               className="neumorphic-input small-select"
               value={autoLayoutCount}
@@ -735,6 +734,7 @@ const App: React.FC = () => {
               showHeatmap={showHeatmap}
               showMeasurements={showMeasurements}
               gridData={gridData}
+              zoom={zoom}
               onContainerUpdate={setContainer}
               onSampleUpdate={(updated) => setSamples(samples.map(s => s.id === updated.id ? updated : s))}
               onSelect={(id) => {
