@@ -17,7 +17,7 @@ export class InterferenceCalculator {
     if (!gridData || gridData.length === 0) return 0;
     
     const ambientTemp = container.ambient_temperature;
-    const threshold = 2.5; // °F - minimum elevation to consider as "heat halo" (includes visible cyan/green zones)
+    const threshold = 1.5; // °F - minimum elevation to consider as "heat halo" (captures growing halos early)
     
     const gridH = gridData.length;
     const gridW = gridData[0].length;
@@ -95,13 +95,16 @@ export class InterferenceCalculator {
     // Calculate overlap amount
     const overlapAmount = totalHaloReach - edgeDist;
     
-    // Interference percentage = what fraction of the total possible overlap has occurred
-    // totalHaloReach is the maximum possible overlap (when samples touch)
-    // This ensures percentage can never exceed 100%
-    // Small overlap (just touching) → low %
-    // Moderate overlap (halos merging) → medium %
-    // Complete overlap (samples touching) → 100%
-    const interferencePercentage = (overlapAmount / totalHaloReach) * 100;
+    // NEW GRADUAL FORMULA:
+    // Instead of using totalHaloReach as denominator (which gives high % immediately),
+    // use the DISTANCE BETWEEN SAMPLES as the reference.
+    // This makes interference grow gradually as halos expand toward each other.
+    // 
+    // When halos are small and just forming: low %
+    // When halos grow and start touching: medium %
+    // When halos deeply overlap: high %
+    // When samples are very close: approaches 100%
+    const interferencePercentage = (overlapAmount / edgeDist) * 50; // Scale by 50 to get reasonable range
     
     return Math.min(100, Math.max(0, interferencePercentage))
   }
