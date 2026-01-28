@@ -153,6 +153,9 @@ export const Canvas: React.FC<CanvasProps> = ({
 
     // 4. Draw Content Inside Mask
     if (showHeatmap && gridData) {
+      // Fill with black background first for better heat map visibility
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       // Draw Heatmap to Buffer first
       const width = canvas.width;
       const height = canvas.height;
@@ -220,7 +223,9 @@ export const Canvas: React.FC<CanvasProps> = ({
         }
       }
     } else {
-      ctx.fillStyle = container.fill_type === 'Water' ? '#E6F3FF' : '#FFF8E1';
+      // Use black background when simulation is running for better heat map visibility
+      // Otherwise use material-appropriate colors
+      ctx.fillStyle = '#000000';
       ctx.fill();
     }
     ctx.restore(); // END MASK
