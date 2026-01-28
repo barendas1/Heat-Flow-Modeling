@@ -323,7 +323,7 @@ export const Canvas: React.FC<CanvasProps> = ({
       // Sample Measurements
       samples.forEach((s, i) => {
         ctx.font = '12px Inter';
-        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+        ctx.strokeStyle = 'rgba(227, 227, 227, 0.9)';
         ctx.setLineDash([4, 4]);
         
         // Show Sample Diameter (including Rim)
