@@ -291,7 +291,7 @@ export const Canvas: React.FC<CanvasProps> = ({
 
       // Always Draw Name Label
       ctx.font = 'bold 14px Inter';
-      ctx.fillStyle = '#000';
+      ctx.fillStyle = '#e3e3e3';
       ctx.textAlign = 'center';
       ctx.fillText(sample.name, sample.x, sample.y - rimRadius - 15);
     });
