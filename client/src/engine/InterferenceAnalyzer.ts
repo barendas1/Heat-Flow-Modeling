@@ -92,33 +92,16 @@ export class InterferenceCalculator {
       return 0;
     }
     
-    // Calculate overlap amount
+    // Calculate what percentage of Sample 1's halo is intruded upon by Sample 2's heat
+    // overlapAmount = how much the halos overlap in the space between them
     const overlapAmount = totalHaloReach - edgeDist;
-    const overlapPercentage = (overlapAmount / totalHaloReach) * 100;
     
-    // Apply distance weighting
-    // Closer samples should have higher interference for same overlap
-    // Use inverse square of distance for weighting
-    const maxDistance = Math.sqrt(canvasWidth**2 + canvasHeight**2); // Diagonal of canvas
-    const distanceWeight = 1 - (edgeDist / maxDistance);
+    // The interference percentage represents how much of s1's halo territory
+    // is being invaded by s2's heat
+    // If s1's halo extends 100px and s2's heat reaches 25px into it, that's 25%
+    const interferencePercentage = (overlapAmount / halo1) * 100;
     
-    // Final interference score combines overlap and distance
-    // Closer samples with more overlap = higher percentage
-    let interferenceScore = overlapPercentage * (0.5 + 0.5 * distanceWeight);
-    
-    // Verify by checking midpoint temperature
-    // If midpoint isn't elevated, reduce interference
-    const midX = (s1.x + s2.x) / 2;
-    const midY = (s1.y + s2.y) / 2;
-    const midTemp = getTempAt(midX, midY);
-    const midElevation = midTemp - ambientTemp;
-    
-    if (midElevation < threshold) {
-      // Midpoint not hot enough - reduce interference significantly
-      interferenceScore *= 0.3;
-    }
-    
-    return Math.min(100, Math.max(0, interferenceScore));
+    return Math.min(100, Math.max(0, interferencePercentage))
   }
 
   static getInterferenceReport(
