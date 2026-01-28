@@ -267,9 +267,11 @@ export const Canvas: React.FC<CanvasProps> = ({
         ctx.setLineDash([4, 4]);
         
         // Show Sample Diameter (including Rim)
-        // Rim adds 1 inch to radius -> 2 inches to diameter
         const totalDiameter = (s.radius * 2 / PIXELS_PER_INCH) + 2;
         drawLabel(s.x, s.y, `Ø ${totalDiameter.toFixed(1)}"`);
+
+        // RIM RADIUS for measurement offset
+        const rimR = s.radius + (1 * PIXELS_PER_INCH);
 
         // Distance to Walls
         if (container.shape === 'rectangle') {
@@ -278,24 +280,27 @@ export const Canvas: React.FC<CanvasProps> = ({
            const topWall = cy - container.height/2;
            const bottomWall = cy + container.height/2;
            
-           const distLeft = s.x - leftWall;
-           const distRight = rightWall - s.x;
+           // Measure from RIM EDGE
+           const distLeft = (s.x - rimR) - leftWall;
+           const distRight = rightWall - (s.x + rimR);
+           
            if (distLeft < distRight) {
-             ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(leftWall, s.y); ctx.stroke();
-             drawLabel((s.x + leftWall)/2, s.y, `${(distLeft/PIXELS_PER_INCH).toFixed(1)}"`);
+             ctx.beginPath(); ctx.moveTo(s.x - rimR, s.y); ctx.lineTo(leftWall, s.y); ctx.stroke();
+             drawLabel(((s.x - rimR) + leftWall)/2, s.y, `${(distLeft/PIXELS_PER_INCH).toFixed(1)}"`);
            } else {
-             ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(rightWall, s.y); ctx.stroke();
-             drawLabel((s.x + rightWall)/2, s.y, `${(distRight/PIXELS_PER_INCH).toFixed(1)}"`);
+             ctx.beginPath(); ctx.moveTo(s.x + rimR, s.y); ctx.lineTo(rightWall, s.y); ctx.stroke();
+             drawLabel(((s.x + rimR) + rightWall)/2, s.y, `${(distRight/PIXELS_PER_INCH).toFixed(1)}"`);
            }
 
-           const distTop = s.y - topWall;
-           const distBottom = bottomWall - s.y;
+           const distTop = (s.y - rimR) - topWall;
+           const distBottom = bottomWall - (s.y + rimR);
+           
            if (distTop < distBottom) {
-             ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.x, topWall); ctx.stroke();
-             drawLabel(s.x, (s.y + topWall)/2, `${(distTop/PIXELS_PER_INCH).toFixed(1)}"`);
+             ctx.beginPath(); ctx.moveTo(s.x, s.y - rimR); ctx.lineTo(s.x, topWall); ctx.stroke();
+             drawLabel(s.x, ((s.y - rimR) + topWall)/2, `${(distTop/PIXELS_PER_INCH).toFixed(1)}"`);
            } else {
-             ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.x, bottomWall); ctx.stroke();
-             drawLabel(s.x, (s.y + bottomWall)/2, `${(distBottom/PIXELS_PER_INCH).toFixed(1)}"`);
+             ctx.beginPath(); ctx.moveTo(s.x, s.y + rimR); ctx.lineTo(s.x, bottomWall); ctx.stroke();
+             drawLabel(s.x, ((s.y + rimR) + bottomWall)/2, `${(distBottom/PIXELS_PER_INCH).toFixed(1)}"`);
            }
         } else {
            // Drum Wall
@@ -304,22 +309,41 @@ export const Canvas: React.FC<CanvasProps> = ({
            const angle = Math.atan2(dy, dx);
            const wallX = cx + Math.cos(angle) * (container.width/2);
            const wallY = cy + Math.sin(angle) * (container.width/2);
-           const distToWall = Math.sqrt((wallX - s.x)**2 + (wallY - s.y)**2);
            
-           ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(wallX, wallY); ctx.stroke();
-           drawLabel((s.x + wallX)/2, (s.y + wallY)/2, `${(distToWall/PIXELS_PER_INCH).toFixed(1)}"`);
+           // Distance from center to wall
+           const distCenterToWall = Math.sqrt((wallX - s.x)**2 + (wallY - s.y)**2);
+           // Distance from RIM to wall
+           const distToWall = distCenterToWall - rimR;
+           
+           // Point on rim closest to wall
+           const rimX = s.x + Math.cos(angle) * rimR;
+           const rimY = s.y + Math.sin(angle) * rimR;
+           
+           ctx.beginPath(); ctx.moveTo(rimX, rimY); ctx.lineTo(wallX, wallY); ctx.stroke();
+           drawLabel((rimX + wallX)/2, (rimY + wallY)/2, `${(distToWall/PIXELS_PER_INCH).toFixed(1)}"`);
         }
 
         // Distance to Neighbors
         for (let j = i + 1; j < samples.length; j++) {
           const other = samples[j];
+          const otherRimR = other.radius + (1 * PIXELS_PER_INCH);
+          
           const dx = other.x - s.x;
           const dy = other.y - s.y;
-          const dist = Math.sqrt(dx*dx + dy*dy);
+          const distCenter = Math.sqrt(dx*dx + dy*dy);
+          const angle = Math.atan2(dy, dx);
           
-          if (dist < 10 * PIXELS_PER_INCH) {
-             ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(other.x, other.y); ctx.stroke();
-             drawLabel((s.x + other.x)/2, (s.y + other.y)/2, `${(dist/PIXELS_PER_INCH).toFixed(1)}"`);
+          // Distance between RIMS
+          const distRimToRim = distCenter - rimR - otherRimR;
+          
+          if (distCenter < 15 * PIXELS_PER_INCH) { // Show if reasonably close
+             const startX = s.x + Math.cos(angle) * rimR;
+             const startY = s.y + Math.sin(angle) * rimR;
+             const endX = other.x - Math.cos(angle) * otherRimR;
+             const endY = other.y - Math.sin(angle) * otherRimR;
+             
+             ctx.beginPath(); ctx.moveTo(startX, startY); ctx.lineTo(endX, endY); ctx.stroke();
+             drawLabel((startX + endX)/2, (startY + endY)/2, `${(distRimToRim/PIXELS_PER_INCH).toFixed(1)}"`);
           }
         }
         ctx.setLineDash([]);
