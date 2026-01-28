@@ -17,7 +17,7 @@ export class InterferenceCalculator {
     if (!gridData || gridData.length === 0) return 0;
     
     const ambientTemp = container.ambient_temperature;
-    const threshold = 10; // °F - minimum elevation to consider as "heat halo" (early detection)
+    const threshold = 6; // °F - minimum elevation to consider as "heat halo" (early detection)
     
     const gridH = gridData.length;
     const gridW = gridData[0].length;
