@@ -2,7 +2,7 @@ import { Sample, Container } from '../types';
 import { PIXELS_PER_INCH } from '../const';
 
 export class InterferenceCalculator {
-  // Calculate thermal interference between samples based on actual heat map data
+  // Calculate thermal interference between samples based on actual heat map overlap
   // Returns a score 0-100 where 0 is no interference and 100 is max interference
   static calculateInterference(
     s1: Sample, 
@@ -16,91 +16,109 @@ export class InterferenceCalculator {
     // If no grid data yet, return 0
     if (!gridData || gridData.length === 0) return 0;
     
-    const dist = Math.sqrt((s2.x - s1.x)**2 + (s2.y - s1.y)**2);
-    
-    // Measure from RIM EDGE (Radius + 1 inch)
-    const rim1 = s1.radius + (1 * PIXELS_PER_INCH);
-    const rim2 = s2.radius + (1 * PIXELS_PER_INCH);
-    const edgeDist = dist - rim1 - rim2;
-    
-    // If physically touching or overlapping
-    if (edgeDist <= 0) return 100;
-
-    // Sample points around the rim of each sample to check for heat overlap
-    // We'll check if the temperature at s2's rim is elevated due to s1's heat
     const ambientTemp = container.ambient_temperature;
-    const threshold = 0.5; // °F - minimum temperature elevation to consider interference
+    const threshold = 2.0; // °F - minimum elevation to consider as "heat halo"
     
     const gridH = gridData.length;
     const gridW = gridData[0].length;
-    const cx = canvasWidth / 2;
-    const cy = canvasHeight / 2;
     
-    // Sample 16 points around each sample's rim
-    const numSamples = 16;
-    let maxTempElevation1 = 0; // Max temp elevation at s2's location due to s1
-    let maxTempElevation2 = 0; // Max temp elevation at s1's location due to s2
+    // Calculate rim radii (sample radius + 1 inch)
+    const rim1 = s1.radius + (1 * PIXELS_PER_INCH);
+    const rim2 = s2.radius + (1 * PIXELS_PER_INCH);
     
-    for (let i = 0; i < numSamples; i++) {
-      const angle = (i / numSamples) * Math.PI * 2;
+    // Calculate distance between sample centers and rim edges
+    const centerDist = Math.sqrt((s2.x - s1.x)**2 + (s2.y - s1.y)**2);
+    const edgeDist = centerDist - rim1 - rim2;
+    
+    // If physically touching or overlapping
+    if (edgeDist <= 0) return 100;
+    
+    // Helper function to get temperature at a point
+    const getTempAt = (x: number, y: number): number => {
+      const gx = Math.floor((x / canvasWidth) * gridW);
+      const gy = Math.floor((y / canvasHeight) * gridH);
       
-      // Check point on s1's rim for heat from s2
-      const x1 = s1.x + Math.cos(angle) * rim1;
-      const y1 = s1.y + Math.sin(angle) * rim1;
+      if (gx >= 0 && gx < gridW && gy >= 0 && gy < gridH) {
+        return gridData[gy][gx];
+      }
+      return ambientTemp;
+    };
+    
+    // Calculate heat halo radius for each sample
+    // Halo radius = distance from sample center where temp drops to ambient + threshold
+    const calculateHaloRadius = (sample: Sample): number => {
+      const sampleRim = sample.radius + (1 * PIXELS_PER_INCH);
+      let maxHaloRadius = 0;
       
-      // Convert to grid coordinates (grid is downsampled by 4)
-      const gx1 = Math.floor((x1 / canvasWidth) * gridW);
-      const gy1 = Math.floor((y1 / canvasHeight) * gridH);
-      
-      if (gx1 >= 0 && gx1 < gridW && gy1 >= 0 && gy1 < gridH) {
-        const temp1 = gridData[gy1][gx1];
-        maxTempElevation2 = Math.max(maxTempElevation2, temp1 - ambientTemp);
+      // Check in 8 directions from sample center
+      const directions = 8;
+      for (let i = 0; i < directions; i++) {
+        const angle = (i / directions) * Math.PI * 2;
+        const dx = Math.cos(angle);
+        const dy = Math.sin(angle);
+        
+        // Start from rim edge and move outward
+        let distance = sampleRim;
+        const maxDistance = Math.min(canvasWidth, canvasHeight) / 2; // Don't check beyond half canvas
+        
+        while (distance < maxDistance) {
+          const x = sample.x + dx * distance;
+          const y = sample.y + dy * distance;
+          const temp = getTempAt(x, y);
+          
+          // If temperature has dropped to near ambient, this is the halo edge
+          if (temp - ambientTemp < threshold) {
+            maxHaloRadius = Math.max(maxHaloRadius, distance - sampleRim);
+            break;
+          }
+          
+          distance += 5; // Check every 5 pixels
+        }
       }
       
-      // Check point on s2's rim for heat from s1
-      const x2 = s2.x + Math.cos(angle) * rim2;
-      const y2 = s2.y + Math.sin(angle) * rim2;
-      
-      const gx2 = Math.floor((x2 / canvasWidth) * gridW);
-      const gy2 = Math.floor((y2 / canvasHeight) * gridH);
-      
-      if (gx2 >= 0 && gx2 < gridW && gy2 >= 0 && gy2 < gridH) {
-        const temp2 = gridData[gy2][gx2];
-        maxTempElevation1 = Math.max(maxTempElevation1, temp2 - ambientTemp);
-      }
+      return maxHaloRadius;
+    };
+    
+    // Get halo radii for both samples
+    const halo1 = calculateHaloRadius(s1);
+    const halo2 = calculateHaloRadius(s2);
+    
+    // Check if halos overlap
+    // Halos overlap when: distance_between_rims < (halo1_radius + halo2_radius)
+    const totalHaloReach = halo1 + halo2;
+    
+    if (edgeDist >= totalHaloReach) {
+      // No overlap - no interference
+      return 0;
     }
     
-    // Check midpoint between samples for heat overlap
+    // Calculate overlap amount
+    const overlapAmount = totalHaloReach - edgeDist;
+    const overlapPercentage = (overlapAmount / totalHaloReach) * 100;
+    
+    // Apply distance weighting
+    // Closer samples should have higher interference for same overlap
+    // Use inverse square of distance for weighting
+    const maxDistance = Math.sqrt(canvasWidth**2 + canvasHeight**2); // Diagonal of canvas
+    const distanceWeight = 1 - (edgeDist / maxDistance);
+    
+    // Final interference score combines overlap and distance
+    // Closer samples with more overlap = higher percentage
+    let interferenceScore = overlapPercentage * (0.5 + 0.5 * distanceWeight);
+    
+    // Verify by checking midpoint temperature
+    // If midpoint isn't elevated, reduce interference
     const midX = (s1.x + s2.x) / 2;
     const midY = (s1.y + s2.y) / 2;
-    const gxMid = Math.floor((midX / canvasWidth) * gridW);
-    const gyMid = Math.floor((midY / canvasHeight) * gridH);
+    const midTemp = getTempAt(midX, midY);
+    const midElevation = midTemp - ambientTemp;
     
-    let midTempElevation = 0;
-    if (gxMid >= 0 && gxMid < gridW && gyMid >= 0 && gyMid < gridH) {
-      midTempElevation = gridData[gyMid][gxMid] - ambientTemp;
+    if (midElevation < threshold) {
+      // Midpoint not hot enough - reduce interference significantly
+      interferenceScore *= 0.3;
     }
     
-    // Interference occurs when:
-    // 1. Temperature at one sample's rim is elevated above ambient (heat from other sample reached it)
-    // 2. Or temperature at midpoint is significantly elevated (heat halos overlap)
-    
-    const maxElevation = Math.max(maxTempElevation1, maxTempElevation2, midTempElevation);
-    
-    if (maxElevation < threshold) return 0;
-    
-    // Calculate interference percentage based on temperature elevation
-    // Assume initial sample temp is around 110°F and ambient is 70°F
-    // Max possible elevation is 40°F
-    const maxPossibleElevation = Math.max(
-      Math.abs(s1.initial_temperature - ambientTemp),
-      Math.abs(s2.initial_temperature - ambientTemp)
-    );
-    
-    // Interference score: 0-100% based on how much heat has reached the other sample
-    const interferenceScore = Math.min(100, (maxElevation / maxPossibleElevation) * 100);
-    
-    return interferenceScore;
+    return Math.min(100, Math.max(0, interferenceScore));
   }
 
   static getInterferenceReport(
@@ -125,8 +143,8 @@ export class InterferenceCalculator {
           canvasWidth,
           canvasHeight
         );
-        // Report even tiny interference > 0.1% to ensure early detection
-        if (score > 0.1) { 
+        // Only report significant interference (> 1%)
+        if (score > 1.0) { 
           report.push(`${samples[i].name} ↔ ${samples[j].name}: ${score.toFixed(1)}%`);
           maxInterference = Math.max(maxInterference, score);
         }
