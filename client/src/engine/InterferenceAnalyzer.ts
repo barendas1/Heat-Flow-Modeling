@@ -132,8 +132,42 @@ export class InterferenceCalculator {
     const report: string[] = [];
     let maxInterference = 0;
     
+    // Helper function to determine if two samples are neighbors
+    // Neighbors are within 1 row or 1 column of each other
+    const areNeighbors = (s1: Sample, s2: Sample): boolean => {
+      const dx = Math.abs(s2.x - s1.x);
+      const dy = Math.abs(s2.y - s1.y);
+      
+      // Calculate approximate grid spacing
+      // Find minimum distance between any two samples to estimate grid spacing
+      let minDist = Infinity;
+      for (let i = 0; i < samples.length; i++) {
+        for (let j = i + 1; j < samples.length; j++) {
+          const dist = Math.sqrt(
+            (samples[j].x - samples[i].x)**2 + 
+            (samples[j].y - samples[i].y)**2
+          );
+          if (dist > 0) minDist = Math.min(minDist, dist);
+        }
+      }
+      
+      // If samples are within 1.5x the minimum grid spacing, they're neighbors
+      // This accounts for both orthogonal and diagonal neighbors
+      const distance = Math.sqrt(dx**2 + dy**2);
+      const neighborThreshold = minDist * 1.5;
+      
+      return distance <= neighborThreshold;
+    };
+    
+    // Check each sample against all others (not just unique pairs)
+    // This ensures we show all relationships
     for (let i = 0; i < samples.length; i++) {
-      for (let j = i + 1; j < samples.length; j++) {
+      for (let j = 0; j < samples.length; j++) {
+        if (i === j) continue; // Skip self
+        
+        // Only check neighbors
+        if (!areNeighbors(samples[i], samples[j])) continue;
+        
         const score = this.calculateInterference(
           samples[i], 
           samples[j], 
@@ -143,6 +177,7 @@ export class InterferenceCalculator {
           canvasWidth,
           canvasHeight
         );
+        
         // Only report significant interference (> 1%)
         if (score > 1.0) { 
           report.push(`${samples[i].name} ↔ ${samples[j].name}: ${score.toFixed(1)}%`);
