@@ -6,7 +6,11 @@ export class InterferenceCalculator {
   // Returns a score 0-100 where 0 is no interference and 100 is max interference
   static calculateInterference(s1: Sample, s2: Sample, container: Container, elapsedTime: number): number {
     const dist = Math.sqrt((s2.x - s1.x)**2 + (s2.y - s1.y)**2);
-    const edgeDist = dist - s1.radius - s2.radius;
+    
+    // Measure from RIM EDGE (Radius + 1 inch)
+    const rim1 = s1.radius + (1 * PIXELS_PER_INCH);
+    const rim2 = s2.radius + (1 * PIXELS_PER_INCH);
+    const edgeDist = dist - rim1 - rim2;
     
     // If physically touching or overlapping
     if (edgeDist <= 0) return 100;
@@ -24,11 +28,9 @@ export class InterferenceCalculator {
     // Convert to pixels (1 meter approx 39.37 inches * PIXELS_PER_INCH)
     const metersToPixels = 39.37 * PIXELS_PER_INCH;
     
-    // INCREASED SENSITIVITY:
-    // We multiply the diffusion length by 3.0 (instead of 2.0) to account for the visual "halo"
-    // which extends further than the strict 1/e decay point.
+    // We multiply the diffusion length by 2.5 to account for the visual "halo"
     // This ensures we catch interference as soon as the visual colors touch.
-    const diffusionLengthMeters = 3.0 * Math.sqrt(alpha * Math.max(1, elapsedTime));
+    const diffusionLengthMeters = 2.5 * Math.sqrt(alpha * Math.max(1, elapsedTime));
     const diffusionLengthPixels = diffusionLengthMeters * metersToPixels;
 
     // The "Heat Halo" radius is effectively the diffusion length
@@ -37,6 +39,7 @@ export class InterferenceCalculator {
     
     const totalHaloReach = diffusionLengthPixels * 2; // Two samples reaching out
     
+    // HARD CUTOFF: If distance is greater than halo reach, absolutely 0 interference
     if (edgeDist > totalHaloReach) return 0;
     
     // Calculate percentage overlap

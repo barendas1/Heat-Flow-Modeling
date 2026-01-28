@@ -96,8 +96,11 @@ const App: React.FC = () => {
 
         const result = physicsRef.current.getGrid(); // Get latest grid state
         
-        // Throttle Grid Updates to 30 FPS (every 2nd frame)
-        if (frameCount % 2 === 0) {
+        // Throttle Grid Updates
+        // At high speeds, we want to update more frequently relative to simulation time,
+        // but we are limited by React render speed.
+        // Always update at least every frame if speed is high to show progress.
+        if (simSpeed > 100 || frameCount % 2 === 0) {
           setGridData(result);
         }
         
@@ -188,20 +191,32 @@ const App: React.FC = () => {
     const sampleRadius = (4 * PIXELS_PER_INCH) / 2; // Default 4" diameter
     const sampleDiameter = sampleRadius * 2;
     
-    // 1. Margin from Edge of Sample (not center)
-    // User requested 4 inches from sample edge
-    // PLUS 1 inch for the rim = 5 inches from center to wall
-    const edgeMargin = 4 * PIXELS_PER_INCH;
-    const rimWidth = 1 * PIXELS_PER_INCH;
+    // 1. Margin from Edge of Sample RIM
+    // User requested "at least a diameter's length away from any given container edge"
+    // MEASURED FROM THE SAMPLE WELLS EDGE (RIM).
+    // Sample Diameter = 4 inches (radius 2) or 2 inches (radius 1)
+    // Rim adds 1 inch to radius.
     
-    // Total margin from wall to center = edgeMargin + radius + rimWidth
-    // Wait, user said "4 inches from the sample edge". 
-    // The "sample edge" usually implies the main body. 
-    // But if there is a rim, we should probably measure from the rim edge?
-    // Let's assume "sample edge" means the outer boundary of the main cylinder (radius).
-    // The rim is an "extra" feature.
-    // So margin = 4" + radius.
-    const centerMargin = edgeMargin + sampleRadius;
+    // Let's calculate the required margin based on the sample size.
+    // Default sample is 4x8 (4" diameter).
+    // Diameter = 4 inches.
+    // Margin = Diameter = 4 inches.
+    // BUT user said "full diameter's clearance".
+    // If sample is 4", margin is 4".
+    // If sample is 2", margin is 2".
+    
+    // Wait, the user's prompt says: "if its a 4x8" well, it must be 4" away from any wall."
+    // And "measured from the sample wells edge".
+    // So Distance(Rim Edge to Wall) >= Diameter.
+    
+    const diameterInches = 4; // Default 4x8
+    const requiredClearance = diameterInches * PIXELS_PER_INCH;
+    
+    // Rim Radius = Sample Radius + 1 inch
+    const rimRadius = sampleRadius + (1 * PIXELS_PER_INCH);
+    
+    // Center Margin = Clearance + Rim Radius
+    const centerMargin = requiredClearance + rimRadius;
 
     if (container.shape === 'circle') {
       // Circular Layout
@@ -233,7 +248,7 @@ const App: React.FC = () => {
       const availH = container.height - centerMargin * 2;
       
       if (availW <= 0 || availH <= 0) {
-         setLayoutWarning("Container too small for 4-inch edge clearance.");
+         setLayoutWarning("Container too small for full diameter edge clearance.");
          return;
       }
       
