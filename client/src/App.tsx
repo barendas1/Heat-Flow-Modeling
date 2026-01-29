@@ -29,6 +29,7 @@ const App: React.FC = () => {
     depth: 12 * PIXELS_PER_INCH, // Default 12 inches
     fill_material: MaterialLibrary.getMaterials()['Phenolic Foam'],
     fill_type: 'Phenolic Foam',
+    water_temperature: 70, // Default water temperature
     wall_material: MaterialLibrary.getMaterials()['Plastic (PVC)'],
     ambient_temperature: 70
   });
@@ -503,6 +504,19 @@ const App: React.FC = () => {
                 <option value="Water">Water</option>
               </select>
             </div>
+
+            {/* Controlled Temperature Field - Only for Water */}
+            {container.fill_type === 'Water' && (
+              <div className="form-row">
+                <label>Controlled Temp (°F)</label>
+                <input 
+                  type="number" 
+                  className="neumorphic-input"
+                  value={container.water_temperature || 70}
+                  onChange={(e) => setContainer({ ...container, water_temperature: Number(e.target.value) })}
+                />
+              </div>
+            )}
 
             {/* Ambient Temperature Field - Always Visible */}
             <div className="form-row">

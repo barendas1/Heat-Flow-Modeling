@@ -48,6 +48,7 @@ export interface Container {
   
   fill_type: 'Phenolic Foam' | 'Water';
   fill_material: Material;
+  water_temperature?: number; // Controlled water temperature in Fahrenheit (only for Water fill)
   
   wall_material: Material;
   ambient_temperature: number; // Fahrenheit

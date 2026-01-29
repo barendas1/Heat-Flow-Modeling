@@ -39,6 +39,10 @@ export class GridPhysicsEngine {
     this.sampleCells.clear();
 
     const ambientC = this.f2c(container.ambient_temperature);
+    // Use water temperature for fill material if water is selected, otherwise use ambient
+    const fillTempC = container.fill_type === 'Water' && container.water_temperature !== undefined
+      ? this.f2c(container.water_temperature)
+      : ambientC;
 
     // Pre-calculate Sample Geometry & Physics
     const processedSamples = samples.map(s => {
@@ -116,6 +120,12 @@ export class GridPhysicsEngine {
           material = MaterialLibrary.getMaterials()['Air'];
           isBoundary = true; // Fixed ambient temp
         } else {
+          // Inside container: use fill material temperature
+          temp = fillTempC;
+          // If water is selected, make it a boundary condition (controlled temperature)
+          if (container.fill_type === 'Water') {
+            isBoundary = true;
+          }
           // Check if inside any sample
           for (const sample of processedSamples) {
             const dx = worldX - sample.x;
@@ -134,6 +144,9 @@ export class GridPhysicsEngine {
                 material = sample.outer_material;
                 temp = this.f2c(sample.initial_temperature);
               }
+              
+              // Samples are not boundary conditions - they exchange heat with surroundings
+              isBoundary = false;
               
               // Cache cell location for this sample
               if (!this.sampleCells.has(sample.id)) {
